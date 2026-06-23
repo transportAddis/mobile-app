@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:mobile_app/screens/login_screen.dart';
 import 'package:mobile_app/providers/transit_provider.dart';
 import 'package:mobile_app/theme/app_theme.dart';
 
@@ -27,7 +28,7 @@ class SmartTransitApp extends StatelessWidget {
         darkTheme: AppTheme.darkTheme,
         themeMode: ThemeMode.system,
         // TODO(Task 3): Replace with go_router or named routes.
-        home: const _AppPlaceholder(),
+        home: const LoginScreen(),
       ),
     );
   }
