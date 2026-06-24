@@ -1,67 +1,65 @@
+import 'package:flutter/material.dart' show Color;
 import 'package:flutter/foundation.dart';
 
-import 'package:mobile_app/models/app_alert.dart';
+import 'package:mobile_app/models/nearby_station.dart';
 import 'package:mobile_app/models/transit_route.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TransitProvider
 //
 // Single source of truth for all live transit data.
-// Call fetchMockData() once from the root widget (e.g. via initState or
-// a ProxyProvider) to hydrate the UI. In Task 5 this will be replaced
-// by real HTTP calls via TransitService.
+// AppAlert has been removed from scope (architecture pivot).
+//
+// Task 6 will add:
+//   • selectedRouteIndex      — which polyline the user highlighted
+//   • A method to receive route LatLng data from the backend and
+//     expose it so HomeScreen can build color-coded Polyline objects.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class TransitProvider extends ChangeNotifier {
   // ── Private state ──────────────────────────────────────────────────────────
 
   List<TransitRoute> _routes = [];
-  List<AppAlert> _alerts = [];
   bool _isLoading = false;
   String? _error;
 
-  // ── Public getters ─────────────────────────────────────────────────────────
+  List<NearbyStation> _nearbyStations = [];
+  bool _isLoadingStations = false;
+  String? _stationsError;
 
-  /// All available routes. Unmodifiable – mutate via provider methods only.
+  // ── Public getters: routes ─────────────────────────────────────────────────
+
   List<TransitRoute> get routes => List.unmodifiable(_routes);
-
-  /// Active service alerts, newest first.
-  List<AppAlert> get alerts => List.unmodifiable(_alerts);
-
   bool get isLoading => _isLoading;
-
-  /// Non-null when the last fetch failed. Reset to null on next fetch attempt.
   String? get error => _error;
-
   bool get hasError => _error != null;
   bool get hasRoutes => _routes.isNotEmpty;
-  bool get hasAlerts => _alerts.isNotEmpty;
 
-  /// Convenience: routes filtered by type.
   List<TransitRoute> get trainRoutes =>
       _routes.where((r) => r.type == 'Train').toList();
-
   List<TransitRoute> get busRoutes =>
       _routes.where((r) => r.type == 'Smart Bus').toList();
 
-  // ── Data fetching ──────────────────────────────────────────────────────────
+  // ── Public getters: nearby stations ───────────────────────────────────────
 
-  /// Populates [routes] and [alerts] with realistic Addis Ababa dummy data.
-  /// Simulates an 800ms network round-trip.
-  ///
-  /// Replace the body of this method with a real HTTP call in Task 5:
-  ///   final data = await TransitService.instance.getRoutes();
+  List<NearbyStation> get nearbyStations => List.unmodifiable(_nearbyStations);
+  bool get isLoadingStations => _isLoadingStations;
+  String? get stationsError => _stationsError;
+  bool get hasStationsError => _stationsError != null;
+  bool get hasNearbyStations => _nearbyStations.isNotEmpty;
+
+  // ── Fetch: routes ──────────────────────────────────────────────────────────
+
+  /// Populates [routes] with mock data.
+  /// Task 7: replace body with TransitService.instance.getRoutes().
   Future<void> fetchMockData() async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      // Simulated network latency
       await Future.delayed(const Duration(milliseconds: 800));
-
       _routes = _buildMockRoutes();
-      _alerts = _buildMockAlerts();
     } catch (e, stack) {
       _error = 'Failed to load transit data. Please check your connection.';
       debugPrint('[TransitProvider] fetchMockData error: $e\n$stack');
@@ -71,10 +69,80 @@ class TransitProvider extends ChangeNotifier {
     }
   }
 
-  // ── Mock data ──────────────────────────────────────────────────────────────
+  // ── Fetch: nearby stations (500 m → 750 m fallback) ───────────────────────
+
+  /// Fetches stations near [lat]/[lng]:
+  ///   1. 500m  →  if ≤ 2 results, retry at 750m.
+  ///   2. 750m  →  if still empty, sets [stationsError].
+  ///
+  /// Real Haversine + HTTP replaces this in Task 7.
+  Future<void> fetchNearbyStations(double lat, double lng) async {
+    _isLoadingStations = true;
+    _stationsError = null;
+    _nearbyStations = [];
+    notifyListeners();
+
+    try {
+      // Step 1: 500 m
+      await Future.delayed(const Duration(milliseconds: 600));
+      var stations = _mockStationsWithinRadius(radiusMeters: 500);
+      debugPrint('[TransitProvider] 500 m → ${stations.length} station(s).');
+
+      // Step 2: automatic retry
+      if (stations.length <= 2) {
+        debugPrint('[TransitProvider] ≤2 results — retrying at 750 m.');
+        await Future.delayed(const Duration(milliseconds: 400));
+        stations = _mockStationsWithinRadius(radiusMeters: 750);
+        debugPrint('[TransitProvider] 750 m → ${stations.length} station(s).');
+      }
+
+      if (stations.isEmpty) {
+        _stationsError = 'No stations found near you.';
+      } else {
+        _nearbyStations = stations;
+      }
+    } catch (e, stack) {
+      _stationsError = 'Could not load nearby stations. Please try again.';
+      debugPrint('[TransitProvider] fetchNearbyStations error: $e\n$stack');
+    } finally {
+      _isLoadingStations = false;
+      notifyListeners();
+    }
+  }
+
+  // ── Mock helpers ──────────────────────────────────────────────────────────
+
+  static List<NearbyStation> _mockStationsWithinRadius({
+    required double radiusMeters,
+  }) {
+    if (radiusMeters <= 500) {
+      return const [
+        NearbyStation(id: 's-ayat', name: 'Ayat Station', distanceMeters: 320),
+        NearbyStation(
+          id: 's-summit',
+          name: 'Summit Station',
+          distanceMeters: 480,
+        ),
+      ];
+    }
+    return const [
+      NearbyStation(id: 's-ayat', name: 'Ayat Station', distanceMeters: 320),
+      NearbyStation(
+        id: 's-summit',
+        name: 'Summit Station',
+        distanceMeters: 480,
+      ),
+      NearbyStation(id: 's-lebu', name: 'Lebu Station', distanceMeters: 620),
+      NearbyStation(
+        id: 's-qality',
+        name: 'Qality Station',
+        distanceMeters: 710,
+      ),
+    ];
+  }
 
   static List<TransitRoute> _buildMockRoutes() => [
-    // ── Addis Ababa Light Rail (ERC operated) ─────────────────────────────
+    // ── Light Rail — blue family ───────────────────────────────────────────
     const TransitRoute(
       id: 'lr-ew-01',
       name: 'East-West Light Rail',
@@ -83,6 +151,7 @@ class TransitProvider extends ChangeNotifier {
       fareAmount: 'ETB 2.00',
       stationQueueLevel: CrowdLevel.high,
       vehicleOccupancyLevel: CrowdLevel.medium,
+      routeColor: Color(0xFF1565C0), // deep blue
     ),
     const TransitRoute(
       id: 'lr-ns-01',
@@ -92,9 +161,10 @@ class TransitProvider extends ChangeNotifier {
       fareAmount: 'ETB 2.00',
       stationQueueLevel: CrowdLevel.medium,
       vehicleOccupancyLevel: CrowdLevel.high,
+      routeColor: Color(0xFF0277BD), // steel blue
     ),
 
-    // ── Sheger Smart Bus routes ────────────────────────────────────────────
+    // ── Sheger Smart Bus — each a unique accent ────────────────────────────
     const TransitRoute(
       id: 'sb-42',
       name: 'Sheger Route 42',
@@ -103,6 +173,7 @@ class TransitProvider extends ChangeNotifier {
       fareAmount: 'ETB 5.50',
       stationQueueLevel: CrowdLevel.low,
       vehicleOccupancyLevel: CrowdLevel.low,
+      routeColor: Color(0xFFDE613B), // primary terracotta (app brand)
     ),
     const TransitRoute(
       id: 'sb-17',
@@ -112,6 +183,7 @@ class TransitProvider extends ChangeNotifier {
       fareAmount: 'ETB 5.50',
       stationQueueLevel: CrowdLevel.medium,
       vehicleOccupancyLevel: CrowdLevel.medium,
+      routeColor: Color(0xFF00695C), // deep teal
     ),
     const TransitRoute(
       id: 'sb-07',
@@ -121,6 +193,7 @@ class TransitProvider extends ChangeNotifier {
       fareAmount: 'ETB 4.00',
       stationQueueLevel: CrowdLevel.high,
       vehicleOccupancyLevel: CrowdLevel.high,
+      routeColor: Color(0xFFF57F17), // warm mustard
     ),
     const TransitRoute(
       id: 'sb-31',
@@ -130,6 +203,7 @@ class TransitProvider extends ChangeNotifier {
       fareAmount: 'ETB 6.00',
       stationQueueLevel: CrowdLevel.low,
       vehicleOccupancyLevel: CrowdLevel.medium,
+      routeColor: Color(0xFF6A1B9A), // deep purple
     ),
     const TransitRoute(
       id: 'sb-55',
@@ -139,6 +213,7 @@ class TransitProvider extends ChangeNotifier {
       fareAmount: 'ETB 7.00',
       stationQueueLevel: CrowdLevel.low,
       vehicleOccupancyLevel: CrowdLevel.low,
+      routeColor: Color(0xFF2E7D32), // forest green
     ),
     const TransitRoute(
       id: 'sb-12',
@@ -148,59 +223,7 @@ class TransitProvider extends ChangeNotifier {
       fareAmount: 'ETB 5.00',
       stationQueueLevel: CrowdLevel.medium,
       vehicleOccupancyLevel: CrowdLevel.low,
+      routeColor: Color(0xFFC62828), // deep red
     ),
   ];
-
-  static List<AppAlert> _buildMockAlerts() {
-    final now = DateTime.now();
-    return [
-      AppAlert(
-        id: 'alert-001',
-        title: 'AU Summit Traffic Alert',
-        description:
-            'Heavy vehicle restrictions are in effect along Bole Road due to '
-            'the African Union summit. Expect 15–25 min delays on Sheger '
-            'Routes 31 and 17.',
-        severity: 'warning',
-        timestamp: now.subtract(const Duration(minutes: 22)),
-      ),
-      AppAlert(
-        id: 'alert-002',
-        title: 'Meskel Square Station: Platform Works',
-        description:
-            'Platform 2 at Meskel Square is undergoing scheduled maintenance. '
-            'East-West Line passengers board from Platform 1 only until 18:00.',
-        severity: 'info',
-        timestamp: now.subtract(const Duration(hours: 1)),
-      ),
-      AppAlert(
-        id: 'alert-003',
-        title: 'North-South Line: Reduced Frequency',
-        description:
-            'The North-South Light Rail is running at 20-minute intervals '
-            'until 14:00 due to a track inspection. Normal 10-minute frequency '
-            'resumes this afternoon.',
-        severity: 'warning',
-        timestamp: now.subtract(const Duration(hours: 2)),
-      ),
-      AppAlert(
-        id: 'alert-004',
-        title: 'Route 42 Extension Now Live',
-        description:
-            'Sheger Route 42 now serves Jemo and Lebu with 6 additional stops. '
-            'Updated timetables are available at all served stations.',
-        severity: 'info',
-        timestamp: now.subtract(const Duration(hours: 18)),
-      ),
-      AppAlert(
-        id: 'alert-005',
-        title: 'Lideta Station: Lift Out of Service',
-        description:
-            'The passenger lift at Lideta station is temporarily out of '
-            'service. Staff are available to assist passengers with mobility needs.',
-        severity: 'info',
-        timestamp: now.subtract(const Duration(days: 1)),
-      ),
-    ];
-  }
 }

@@ -1,8 +1,7 @@
+import 'package:flutter/material.dart' show Color;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CrowdLevel
-//
-// Represents live queue density at a station or occupancy inside a vehicle.
-// Mapped directly to AppColors.crowdHigh / crowdMedium / crowdLow in the UI.
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum CrowdLevel {
@@ -10,17 +9,17 @@ enum CrowdLevel {
   medium,
   high;
 
-  /// Parse from a JSON string value e.g. "low", "medium", "high".
   static CrowdLevel fromJson(String value) => CrowdLevel.values.byName(value);
-
   String toJson() => name;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TransitRoute
 //
-// A single transit service – either the Addis Ababa Light Rail (Train)
-// or a Sheger Smart Bus route. Immutable value type; mutate via copyWith.
+// Immutable value type. routeColor is used by:
+//   • The Polyline drawn on FlutterMap (Task 6)
+//   • The midpoint pill badge background (Task 6)
+//   • The RouteCard accent stripe (future)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class TransitRoute {
@@ -32,31 +31,26 @@ class TransitRoute {
     required this.fareAmount,
     required this.stationQueueLevel,
     required this.vehicleOccupancyLevel,
+    required this.routeColor,
   }) : assert(
          type == 'Train' || type == 'Smart Bus',
          'type must be "Train" or "Smart Bus"',
        );
 
-  /// Unique route identifier  e.g. "lr-ew-01", "sb-42"
   final String id;
-
-  /// Human-readable name  e.g. "East-West Light Rail", "Sheger Route 42"
   final String name;
 
   /// "Train" or "Smart Bus"
   final String type;
 
-  /// Estimated arrival at the user's current station, in minutes.
   final int etaMinutes;
-
-  /// Display string for the fare  e.g. "ETB 2.00"
   final String fareAmount;
-
-  /// How crowded the boarding queue at the station is right now.
   final CrowdLevel stationQueueLevel;
-
-  /// How full the incoming vehicle is right now.
   final CrowdLevel vehicleOccupancyLevel;
+
+  /// Distinct per-route colour for map polylines and badges.
+  /// Assigned in TransitProvider mock data; backend will supply this in Task 7.
+  final Color routeColor;
 
   // ── Serialisation ──────────────────────────────────────────────────────────
 
@@ -72,6 +66,7 @@ class TransitRoute {
     vehicleOccupancyLevel: CrowdLevel.fromJson(
       json['vehicle_occupancy_level'] as String,
     ),
+    routeColor: Color(json['route_color_value'] as int),
   );
 
   Map<String, dynamic> toJson() => {
@@ -82,6 +77,7 @@ class TransitRoute {
     'fare_amount': fareAmount,
     'station_queue_level': stationQueueLevel.toJson(),
     'vehicle_occupancy_level': vehicleOccupancyLevel.toJson(),
+    'route_color_value': routeColor.toARGB32(),
   };
 
   // ── copyWith ───────────────────────────────────────────────────────────────
@@ -94,6 +90,7 @@ class TransitRoute {
     String? fareAmount,
     CrowdLevel? stationQueueLevel,
     CrowdLevel? vehicleOccupancyLevel,
+    Color? routeColor,
   }) => TransitRoute(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -102,6 +99,7 @@ class TransitRoute {
     fareAmount: fareAmount ?? this.fareAmount,
     stationQueueLevel: stationQueueLevel ?? this.stationQueueLevel,
     vehicleOccupancyLevel: vehicleOccupancyLevel ?? this.vehicleOccupancyLevel,
+    routeColor: routeColor ?? this.routeColor,
   );
 
   // ── Equality & debug ───────────────────────────────────────────────────────
@@ -119,6 +117,5 @@ class TransitRoute {
   @override
   String toString() =>
       'TransitRoute(id: $id, name: "$name", type: $type, '
-      'eta: ${etaMinutes}min, queue: $stationQueueLevel, '
-      'occupancy: $vehicleOccupancyLevel)';
+      'eta: ${etaMinutes}min)';
 }
