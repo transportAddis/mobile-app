@@ -3,26 +3,22 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
+import 'package:mobile_app/models/transit_route.dart';
 import 'package:mobile_app/providers/transit_provider.dart';
 import 'package:mobile_app/screens/search_screen.dart';
 import 'package:mobile_app/theme/app_theme.dart';
-import 'package:mobile_app/widgets/bottom_nav.dart';
+import 'package:mobile_app/widgets/route_card.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HomeScreen — Map-First (Uber / Google Maps pattern)
+// HomeScreen
 //
-// Stack layers (bottom → top):
-//   1. FlutterMap  — full-screen OSM base map
-//   2. PolylineLayer  — empty now; Task 6 populates with route polylines
-//   3. SafeArea + floating search card  — always on top of the map
-//
-// Scaffold slots:
-//   • bottomNavigationBar: TransitBottomNav
-//   • floatingActionButton: My Location (bottom-right, above nav bar)
+// Map-first screen. Bottom nav state is now owned by MainShell via
+// IndexedStack, so this widget is purely responsible for:
+//   • The FlutterMap base layer
+//   • Color-coded Polylines + midpoint Marker badges
+//   • The floating search card → SearchScreen push
+//   • showModalBottomSheet with RouteCard on badge tap
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Addis Ababa city centre
-const _kAddisAbaba = LatLng(9.0248, 38.7469);
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -32,20 +28,17 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  String _toText = '';
   final MapController _mapController = MapController();
-  int _selectedIndex = 0;
 
-  /// Selected destination name — shown inside the floating search card.
-  /// Null = placeholder "Where to?" is shown.
-  String? _destination;
-
-  /// Color-coded route polylines drawn on the map.
-  /// Empty until Task 6 wires up the route API response.
-  ///
-  /// Task 6: call _buildPolylines(provider.routes) after destination selected.
-  /// Blue  → Train routes  (AppColors.primary adjacent)
-  /// Orange → Bus routes   (AppColors.crowdMedium)
-  final List<Polyline> _polylines = [];
+  // Mock route coordinates (Ayat → CMC → Megenagna → Stadium).
+  // Task 8: replace with real LatLng arrays from the backend route response.
+  final List<LatLng> _routeCoordinates = const [
+    LatLng(9.0248, 38.7469), // Ayat Station
+    LatLng(9.0200, 38.7400), // CMC
+    LatLng(9.0150, 38.7200), // Megenagna
+    LatLng(9.0100, 38.7000), // Stadium
+  ];
 
   @override
   void initState() {
@@ -53,199 +46,246 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final p = context.read<TransitProvider>();
       p.fetchMockData();
-      // Addis Ababa centre — real GPS coordinates injected in Task 7.
       p.fetchNearbyStations(9.0248, 38.7469);
     });
   }
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
-  void _onNavTap(int index) {
-    if (index == _selectedIndex) return;
-    setState(() => _selectedIndex = index);
-    // TODO(Task 8): push SavedScreen (1) and SettingsScreen (2).
+  /// Index-based midpoint — anchors the pill badge on the polyline.
+  LatLng _midpoint(List<LatLng> points) {
+    if (points.isEmpty) return const LatLng(9.0248, 38.7469);
+    return points[points.length ~/ 2];
   }
 
-  Future<void> _onSearchTap() async {
-    final destination = await Navigator.push<String>(
-      context,
-      MaterialPageRoute<String>(
-        builder: (_) => const SearchScreen(),
-        fullscreenDialog: true,
+  // ── Bottom sheet ───────────────────────────────────────────────────────────
+
+  void _showRouteDetails(TransitRoute route) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          // FIX: cardColor is deprecated in M3 — use colorScheme.surface
+          color: Theme.of(ctx).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Drag handle
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(ctx)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.20),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            RouteCard(route: route),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
-    if (destination != null && mounted) {
-      setState(() => _destination = destination);
-      // Task 6: _buildPolylines(destination) goes here.
-    }
   }
 
-  void _onClearDestination() => setState(() => _destination = null);
+  // ── Search navigation ──────────────────────────────────────────────────────
 
-  void _onMyLocation() {
-    // TODO(Task 7): request real GPS via geolocator, then move map.
-    _mapController.move(_kAddisAbaba, 15.0);
+  Future<void> _openSearch() async {
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute<String>(builder: (_) => const SearchScreen()),
+    );
+    if (result != null && result.isNotEmpty && mounted) {
+      setState(() => _toText = result);
+      _mapController.move(_midpoint(_routeCoordinates), 13.5);
+    }
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final provider = context.watch<TransitProvider>();
+    final cs       = Theme.of(context).colorScheme;
+
+    final List<Polyline> polylines = [];
+    final List<Marker>   markers   = [];
+
+    if (_toText.isNotEmpty && provider.routes.isNotEmpty) {
+      for (int i = 0; i < 3 && i < provider.routes.length; i++) {
+        final route = provider.routes[i];
+
+        polylines.add(Polyline(
+          points:      _routeCoordinates,
+          color:       route.routeColor,
+          strokeWidth: i == 0 ? 6.0 : 4.0,
+        ));
+
+        markers.add(Marker(
+          point:     _midpoint(_routeCoordinates),
+          width:     140,
+          height:    45,
+          alignment: Alignment(0, (i - 1) * 1.5),
+          child: GestureDetector(
+            onTap: () => _showRouteDetails(route),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color:        route.routeColor,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color:      Colors.black.withValues(alpha: 0.20),
+                    blurRadius: 6,
+                    offset:     const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    route.type == 'Train'
+                        ? Icons.train_rounded
+                        : Icons.directions_bus_rounded,
+                    color: Colors.white,
+                    size:  14,
+                  ),
+                  const SizedBox(width: 4),
+                  // FIX: use AppTextStyles.mono() instead of raw fontFamily string
+                  Text(
+                    '${route.name.split(' ').last} • ${route.etaMinutes}m',
+                    style: AppTextStyles.mono(
+                      fontSize:   11,
+                      fontWeight: FontWeight.w700,
+                      color:      Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ));
+      }
+    }
 
     return Scaffold(
-      // Prevent the map from resizing when the system keyboard opens
-      // (SearchScreen handles its own keyboard inset).
+      // Prevent map from resizing when keyboard opens on pushed SearchScreen
       resizeToAvoidBottomInset: false,
-
-      bottomNavigationBar: TransitBottomNav(
-        currentIndex: _selectedIndex,
-        onTap: _onNavTap,
-      ),
-
-      // My Location FAB — Flutter automatically lifts it above the nav bar.
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'myLocation',
-        backgroundColor: cs.surface,
-        foregroundColor: cs.primary,
-        elevation: 4,
-        onPressed: _onMyLocation,
-        child: const Icon(Icons.my_location_rounded),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-
       body: Stack(
         children: [
-          // ── Layer 1: Full-screen OSM map ─────────────────────────────────
+          // ── 1. Full-screen OSM map ─────────────────────────────────────────
           FlutterMap(
             mapController: _mapController,
             options: const MapOptions(
-              initialCenter: _kAddisAbaba,
-              initialZoom: 14.0,
+              initialCenter: LatLng(9.0248, 38.7469),
+              initialZoom:   14.0,
             ),
             children: [
-              // Base tile layer
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                // Must identify the app to OSM tile servers per usage policy.
-                userAgentPackageName: 'com.smarttransit.mobile_app',
+                urlTemplate:
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.smarttransit.addis',
               ),
-
-              // ── Layer 2: Route polylines (Task 6 populates this) ──────────
-              // Blue  = Train  (use const Color(0xFF1565C0))
-              // Orange = Bus   (use AppColors.crowdMedium)
-              PolylineLayer(polylines: _polylines),
-
-              // OSM attribution — required by tile usage policy.
-              const SimpleAttributionWidget(
-                source: Text('© OpenStreetMap contributors'),
-                alignment: Alignment.bottomLeft,
-              ),
+              PolylineLayer(polylines: polylines),
+              MarkerLayer(markers: markers),
             ],
           ),
 
-          // ── Layer 3: Floating search card ─────────────────────────────────
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: _FloatingSearchCard(
-                  destination: _destination,
-                  onTap: _onSearchTap,
-                  onClear: _onClearDestination,
+          // ── 2. Floating search bar ─────────────────────────────────────────
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Material(
+                elevation:     6,
+                shadowColor:   Colors.black.withValues(alpha: 0.20),
+                borderRadius:  BorderRadius.circular(32),
+                color:         cs.surface,
+                child: InkWell(
+                  onTap:        _openSearch,
+                  borderRadius: BorderRadius.circular(32),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical:   14,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.search_rounded,
+                            color: cs.onSurfaceVariant),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _toText.isEmpty ? 'Where to?' : 'To: $_toText',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyLarge
+                                ?.copyWith(
+                                  color:      _toText.isEmpty
+                                      ? cs.onSurfaceVariant
+                                      : cs.onSurface,
+                                  fontSize:   18,
+                                  fontWeight: _toText.isEmpty
+                                      ? FontWeight.normal
+                                      : FontWeight.bold,
+                                ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (_toText.isNotEmpty)
+                          GestureDetector(
+                            onTap: () {
+                              setState(() => _toText = '');
+                              _mapController.move(
+                                const LatLng(9.0248, 38.7469),
+                                14.0,
+                              );
+                            },
+                            child: Icon(Icons.close_rounded,
+                                color: cs.onSurfaceVariant, size: 20),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: cs.primary.withValues(alpha: 0.10),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.directions_bus_rounded,
+                                color: cs.primary, size: 20),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
+            ),
+          ),
+
+          // ── 3. My Location FAB ─────────────────────────────────────────────
+          Positioned(
+            bottom: 24,
+            right:  16,
+            child: FloatingActionButton(
+              heroTag:         'myLocation',
+              backgroundColor: cs.surface,
+              foregroundColor: cs.primary,
+              elevation:       4,
+              onPressed: () => _mapController.move(
+                const LatLng(9.0248, 38.7469),
+                14.0,
+              ),
+              child: const Icon(Icons.my_location_rounded),
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// _FloatingSearchCard
-//
-// Tappable card that floats over the map at the top of the screen.
-// Shows "Where to?" placeholder or the selected destination name + clear ×.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _FloatingSearchCard extends StatelessWidget {
-  const _FloatingSearchCard({
-    required this.destination,
-    required this.onTap,
-    required this.onClear,
-  });
-
-  final String? destination;
-  final VoidCallback onTap;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final bool hasDestination = destination != null;
-
-    return Material(
-      // Use theme surface — NOT hardcoded white.
-      color: cs.surface,
-      borderRadius: const BorderRadius.all(Radius.circular(16)),
-      elevation: 6,
-      shadowColor: Colors.black.withValues(alpha: 0.14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: const BorderRadius.all(Radius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              // Search / pin icon
-              Icon(
-                hasDestination ? Icons.place_rounded : Icons.search_rounded,
-                color: cs.primary,
-                size: 22,
-              ),
-              const SizedBox(width: 12),
-
-              // Destination text or placeholder
-              Expanded(
-                child: Text(
-                  hasDestination ? destination! : 'Where to?',
-                  style: hasDestination
-                      ? textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        )
-                      : textTheme.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
-                        ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-
-              // Clear button (only when destination is set)
-              if (hasDestination)
-                GestureDetector(
-                  onTap: onClear,
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 18,
-                    color: cs.onSurfaceVariant,
-                  ),
-                )
-              else
-                // Mic icon matches the Google Maps / Uber pattern
-                Icon(
-                  Icons.mic_none_rounded,
-                  size: 20,
-                  color: cs.onSurfaceVariant,
-                ),
-            ],
-          ),
-        ),
       ),
     );
   }
