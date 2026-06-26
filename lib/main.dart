@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:mobile_app/providers/transit_provider.dart';
-import 'package:mobile_app/screens/login_screen.dart';
+import 'package:mobile_app/screens/main_shell.dart';
 import 'package:mobile_app/theme/app_theme.dart';
 
 void main() {
@@ -16,18 +16,14 @@ class SmartTransitApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => TransitProvider()),
-        // Task 5: ChangeNotifierProvider(create: (_) => JourneyProvider()),
-        // Task 5: ChangeNotifierProvider(create: (_) => TrackingProvider()),
-      ],
+      providers: [ChangeNotifierProvider(create: (_) => TransitProvider())],
       child: MaterialApp(
         title: 'Smart Transit Addis',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
         themeMode: ThemeMode.system,
-        home: const LoginScreen(),
+        home: const MainShell(),
       ),
     );
   }
