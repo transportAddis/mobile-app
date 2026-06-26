@@ -9,20 +9,8 @@ import 'package:mobile_app/screens/search_screen.dart';
 import 'package:mobile_app/theme/app_theme.dart';
 import 'package:mobile_app/widgets/route_card.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HomeScreen
-//
-// Map-first screen. Bottom nav state is now owned by MainShell via
-// IndexedStack, so this widget is purely responsible for:
-//   • The FlutterMap base layer
-//   • Color-coded Polylines + midpoint Marker badges
-//   • The floating search card → SearchScreen push
-//   • showModalBottomSheet with RouteCard on badge tap
-// ─────────────────────────────────────────────────────────────────────────────
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -31,13 +19,26 @@ class _HomeScreenState extends State<HomeScreen> {
   String _toText = '';
   final MapController _mapController = MapController();
 
-  // Mock route coordinates (Ayat → CMC → Megenagna → Stadium).
-  // Task 8: replace with real LatLng arrays from the backend route response.
-  final List<LatLng> _routeCoordinates = const [
-    LatLng(9.0248, 38.7469), // Ayat Station
-    LatLng(9.0200, 38.7400), // CMC
-    LatLng(9.0150, 38.7200), // Megenagna
-    LatLng(9.0100, 38.7000), // Stadium
+  final List<LatLng> _path1 = const [
+    LatLng(9.0248, 38.8680),
+    LatLng(9.0195, 38.8005),
+    LatLng(9.0142, 38.7808),
+    LatLng(9.0103, 38.7617),
+    LatLng(9.0100, 38.7450),
+  ];
+  final List<LatLng> _path2 = const [
+    LatLng(9.0248, 38.8680),
+    LatLng(8.9950, 38.8100),
+    LatLng(8.9890, 38.7890),
+    LatLng(9.0103, 38.7617),
+    LatLng(9.0100, 38.7450),
+  ];
+  final List<LatLng> _path3 = const [
+    LatLng(9.0248, 38.8680),
+    LatLng(9.0400, 38.8300),
+    LatLng(9.0350, 38.7650),
+    LatLng(9.0320, 38.7520),
+    LatLng(9.0100, 38.7450),
   ];
 
   @override
@@ -46,27 +47,21 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final p = context.read<TransitProvider>();
       p.fetchMockData();
-      p.fetchNearbyStations(9.0248, 38.7469);
+      p.fetchNearbyStations(9.0248, 38.8680);
     });
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-
-  /// Index-based midpoint — anchors the pill badge on the polyline.
-  LatLng _midpoint(List<LatLng> points) {
-    if (points.isEmpty) return const LatLng(9.0248, 38.7469);
-    return points[points.length ~/ 2];
-  }
-
-  // ── Bottom sheet ───────────────────────────────────────────────────────────
+  LatLng _midpoint(List<LatLng> points) => points.isEmpty
+      ? const LatLng(9.0174, 38.8065)
+      : points[points.length ~/ 2];
 
   void _showRouteDetails(TransitRoute route) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (ctx) => Container(
         decoration: BoxDecoration(
-          // FIX: cardColor is deprecated in M3 — use colorScheme.surface
           color: Theme.of(ctx).colorScheme.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
@@ -74,15 +69,13 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Drag handle
             Container(
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Theme.of(ctx)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.20),
+                color: Theme.of(
+                  ctx,
+                ).colorScheme.onSurface.withValues(alpha: 0.20),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -95,8 +88,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ── Search navigation ──────────────────────────────────────────────────────
-
   Future<void> _openSearch() async {
     final result = await Navigator.push<String>(
       context,
@@ -104,94 +95,125 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (result != null && result.isNotEmpty && mounted) {
       setState(() => _toText = result);
-      _mapController.move(_midpoint(_routeCoordinates), 13.5);
+      _mapController.move(const LatLng(9.0174, 38.8065), 11.5);
     }
   }
-
-  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<TransitProvider>();
-    final cs       = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
 
     final List<Polyline> polylines = [];
-    final List<Marker>   markers   = [];
+    final List<Marker> markers = [];
 
     if (_toText.isNotEmpty && provider.routes.isNotEmpty) {
+      final paths = [_path1, _path2, _path3];
+
       for (int i = 0; i < 3 && i < provider.routes.length; i++) {
         final route = provider.routes[i];
+        final path = paths[i];
 
-        polylines.add(Polyline(
-          points:      _routeCoordinates,
-          color:       route.routeColor,
-          strokeWidth: i == 0 ? 6.0 : 4.0,
-        ));
+        // ── Polyline ────────────────────────────────────────────────────────
+        polylines.add(
+          Polyline(points: path, color: route.routeColor, strokeWidth: 5.0),
+        );
 
-        markers.add(Marker(
-          point:     _midpoint(_routeCoordinates),
-          width:     140,
-          height:    45,
-          alignment: Alignment(0, (i - 1) * 1.5),
-          child: GestureDetector(
-            onTap: () => _showRouteDetails(route),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color:        route.routeColor,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color:      Colors.black.withValues(alpha: 0.20),
-                    blurRadius: 6,
-                    offset:     const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    route.type == 'Train'
-                        ? Icons.train_rounded
-                        : Icons.directions_bus_rounded,
-                    color: Colors.white,
-                    size:  14,
-                  ),
-                  const SizedBox(width: 4),
-                  // FIX: use AppTextStyles.mono() instead of raw fontFamily string
-                  Text(
-                    '${route.name.split(' ').last} • ${route.etaMinutes}m',
-                    style: AppTextStyles.mono(
-                      fontSize:   11,
-                      fontWeight: FontWeight.w700,
-                      color:      Colors.white,
+        // ── Station node markers (white circle, colored border) ─────────────
+        for (final point in path) {
+          markers.add(
+            Marker(
+              point: point,
+              width: 16,
+              height: 16,
+              alignment: Alignment.center,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: route.routeColor, width: 2.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.20),
+                      blurRadius: 3,
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        // ── Midpoint pill badge ──────────────────────────────────────────────
+        // FIX: width 220, Text wrapped in Flexible with ellipsis
+        markers.add(
+          Marker(
+            point: _midpoint(path),
+            width: 220,
+            height: 40,
+            alignment: Alignment.center,
+            child: GestureDetector(
+              onTap: () => _showRouteDetails(route),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: route.routeColor,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 6,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.directions_bus_rounded,
+                      color: Colors.white,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        '${route.name} • ${route.etaMinutes}m',
+                        style: AppTextStyles.mono(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ));
+        );
       }
     }
 
     return Scaffold(
-      // Prevent map from resizing when keyboard opens on pushed SearchScreen
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
-          // ── 1. Full-screen OSM map ─────────────────────────────────────────
           FlutterMap(
             mapController: _mapController,
             options: const MapOptions(
-              initialCenter: LatLng(9.0248, 38.7469),
-              initialZoom:   14.0,
+              initialCenter: LatLng(9.0174, 38.8065),
+              initialZoom: 11.5,
             ),
             children: [
               TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.smarttransit.addis',
               ),
               PolylineLayer(polylines: polylines),
@@ -199,39 +221,36 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
 
-          // ── 2. Floating search bar ─────────────────────────────────────────
+          // Floating search bar
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Material(
-                elevation:     6,
-                shadowColor:   Colors.black.withValues(alpha: 0.20),
-                borderRadius:  BorderRadius.circular(32),
-                color:         cs.surface,
+                elevation: 6,
+                shadowColor: Colors.black.withValues(alpha: 0.20),
+                borderRadius: BorderRadius.circular(32),
+                color: cs.surface,
                 child: InkWell(
-                  onTap:        _openSearch,
+                  onTap: _openSearch,
                   borderRadius: BorderRadius.circular(32),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
-                      vertical:   14,
+                      vertical: 14,
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.search_rounded,
-                            color: cs.onSurfaceVariant),
+                        Icon(Icons.search_rounded, color: cs.onSurfaceVariant),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             _toText.isEmpty ? 'Where to?' : 'To: $_toText',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyLarge
+                            style: Theme.of(context).textTheme.bodyLarge
                                 ?.copyWith(
-                                  color:      _toText.isEmpty
+                                  color: _toText.isEmpty
                                       ? cs.onSurfaceVariant
                                       : cs.onSurface,
-                                  fontSize:   18,
+                                  fontSize: 18,
                                   fontWeight: _toText.isEmpty
                                       ? FontWeight.normal
                                       : FontWeight.bold,
@@ -244,12 +263,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             onTap: () {
                               setState(() => _toText = '');
                               _mapController.move(
-                                const LatLng(9.0248, 38.7469),
-                                14.0,
+                                const LatLng(9.0174, 38.8065),
+                                11.5,
                               );
                             },
-                            child: Icon(Icons.close_rounded,
-                                color: cs.onSurfaceVariant, size: 20),
+                            child: Icon(
+                              Icons.close_rounded,
+                              color: cs.onSurfaceVariant,
+                              size: 20,
+                            ),
                           )
                         else
                           Container(
@@ -258,8 +280,11 @@ class _HomeScreenState extends State<HomeScreen> {
                               color: cs.primary.withValues(alpha: 0.10),
                               shape: BoxShape.circle,
                             ),
-                            child: Icon(Icons.directions_bus_rounded,
-                                color: cs.primary, size: 20),
+                            child: Icon(
+                              Icons.directions_bus_rounded,
+                              color: cs.primary,
+                              size: 20,
+                            ),
                           ),
                       ],
                     ),
@@ -269,19 +294,17 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // ── 3. My Location FAB ─────────────────────────────────────────────
+          // My Location FAB
           Positioned(
             bottom: 24,
-            right:  16,
+            right: 16,
             child: FloatingActionButton(
-              heroTag:         'myLocation',
+              heroTag: 'myLocation',
               backgroundColor: cs.surface,
               foregroundColor: cs.primary,
-              elevation:       4,
-              onPressed: () => _mapController.move(
-                const LatLng(9.0248, 38.7469),
-                14.0,
-              ),
+              elevation: 4,
+              onPressed: () =>
+                  _mapController.move(const LatLng(9.0174, 38.8065), 11.5),
               child: const Icon(Icons.my_location_rounded),
             ),
           ),
