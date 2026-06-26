@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'package:mobile_app/screens/main_shell.dart';
 import 'package:mobile_app/screens/register_screen.dart';
 
-// ─── Google logo SVG ──────────────────────────────────────────────────────────
 const _kGoogleSvg = '''
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -21,9 +21,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // ── Controllers ──────────────────────────────────────────────────────────────
-  // FIXED: Gemini omitted controllers — without them the button can never read
-  // what the user typed.
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
@@ -31,14 +28,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    // Rebuild on every keystroke so _isFormValid re-evaluates and the button
-    // enable/disable state updates in real time.
     _emailController.addListener(() => setState(() {}));
     _passwordController.addListener(() => setState(() {}));
   }
 
-  // FIXED: Gemini omitted dispose() — controllers must be disposed to avoid
-  // memory leaks.
   @override
   void dispose() {
     _emailController.dispose();
@@ -46,15 +39,16 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // Simple gate — email must contain '@', password ≥ 6 chars.
-  // TODO(Task 6): Replace with full FormValidator once AuthService is wired.
   bool get _isFormValid =>
       _emailController.text.trim().contains('@') &&
       _passwordController.text.length >= 6;
 
   void _onLogin() {
     if (!_isFormValid) return;
-    // TODO(Task 6): Call AuthService.login(email, password) and push home.
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const MainShell()),
+      (_) => false,
+    );
   }
 
   @override
@@ -71,7 +65,6 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── Logo ────────────────────────────────────────────────────────
                 Center(
                   child: Container(
                     padding: const EdgeInsets.all(16),
@@ -87,8 +80,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-
-                // ── Titles ──────────────────────────────────────────────────────
                 Text(
                   'Welcome Back',
                   textAlign: TextAlign.center,
@@ -101,12 +92,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   'Sign in to plan your journey',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 32),
-
-                // ── Auth Card ───────────────────────────────────────────────────
                 Card(
                   elevation: 4,
                   shadowColor: Colors.black.withValues(alpha: 0.05),
@@ -118,9 +107,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Email
                         TextField(
-                          controller: _emailController, // FIXED: wired
+                          controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
                           autocorrect: false,
@@ -136,10 +124,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-
-                        // Password
                         TextField(
-                          controller: _passwordController, // FIXED: wired
+                          controller: _passwordController,
                           obscureText: _obscurePassword,
                           textInputAction: TextInputAction.done,
                           onSubmitted: (_) => _onLogin(),
@@ -165,12 +151,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 24),
-
-                        // Login button
-                        // FIXED: onPressed gated on _isFormValid — Gemini had
-                        // () {} which always fired regardless of input.
-                        // FIXED: removed explicit TextStyle from child Text —
-                        // it was overriding AppTheme's Inter/w600 button font.
                         Opacity(
                           opacity: _isFormValid ? 1.0 : 0.45,
                           child: ElevatedButton(
@@ -189,8 +169,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 24),
-
-                        // OR divider
                         Row(
                           children: [
                             Expanded(
@@ -207,7 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: Text(
                                 'OR',
                                 style: theme.textTheme.labelMedium?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
+                                  color: colors.onSurfaceVariant,
                                 ),
                               ),
                             ),
@@ -221,12 +199,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           ],
                         ),
                         const SizedBox(height: 24),
-
-                        // Google button (UI placeholder — Task 6)
                         OutlinedButton.icon(
-                          onPressed: () {
-                            // TODO(Task 6): Google Sign-In flow
-                          },
+                          onPressed: () {},
                           icon: SvgPicture.string(
                             _kGoogleSvg,
                             width: 20,
@@ -251,8 +225,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-
-                // ── Sign-up link ─────────────────────────────────────────────────
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

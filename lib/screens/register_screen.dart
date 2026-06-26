@@ -1,18 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import 'package:mobile_app/screens/login_screen.dart';
+import 'package:mobile_app/screens/main_shell.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
-
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  // ── Controllers ──────────────────────────────────────────────────────────────
-  // FIXED: Gemini omitted all four controllers.
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -22,14 +19,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void initState() {
     super.initState();
-    // Rebuild on every keystroke so _isFormValid re-evaluates.
     _nameController.addListener(() => setState(() {}));
     _emailController.addListener(() => setState(() {}));
     _phoneController.addListener(() => setState(() {}));
     _passwordController.addListener(() => setState(() {}));
   }
 
-  // FIXED: Gemini omitted dispose() — four controllers must be freed.
   @override
   void dispose() {
     _nameController.dispose();
@@ -39,9 +34,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  // All four fields must pass before the button enables.
-  // Phone is already capped at 9 digits by LengthLimitingTextInputFormatter.
-  // TODO(Task 6): Replace with full FormValidator once AuthService is wired.
   bool get _isFormValid =>
       _nameController.text.trim().isNotEmpty &&
       _emailController.text.trim().contains('@') &&
@@ -50,7 +42,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   void _onSignUp() {
     if (!_isFormValid) return;
-    // TODO(Task 6): Call AuthService.register(...) and push home.
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const MainShell()),
+      (_) => false,
+    );
   }
 
   @override
@@ -67,7 +62,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── Header ──────────────────────────────────────────────────────
                 Text(
                   'Create an Account',
                   textAlign: TextAlign.center,
@@ -80,12 +74,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   'Join Smart Transit Addis today',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 32),
-
-                // ── Register Card ────────────────────────────────────────────────
                 Card(
                   elevation: 4,
                   shadowColor: Colors.black.withValues(alpha: 0.05),
@@ -97,12 +89,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Full Name
                         TextField(
-                          controller: _nameController, // FIXED: wired
-                          keyboardType: TextInputType.name,
-                          textInputAction: TextInputAction.next,
+                          controller: _nameController,
                           textCapitalization: TextCapitalization.words,
+                          textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             hintText: 'Full Name',
                             prefixIcon: const Icon(Icons.person_outline),
@@ -115,10 +105,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-
-                        // Email
                         TextField(
-                          controller: _emailController, // FIXED: wired
+                          controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
                           autocorrect: false,
@@ -134,10 +122,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-
-                        // Phone Number
                         TextField(
-                          controller: _phoneController, // FIXED: wired
+                          controller: _phoneController,
                           keyboardType: TextInputType.phone,
                           textInputAction: TextInputAction.next,
                           inputFormatters: [
@@ -180,10 +166,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-
-                        // Password
                         TextField(
-                          controller: _passwordController, // FIXED: wired
+                          controller: _passwordController,
                           obscureText: _obscurePassword,
                           textInputAction: TextInputAction.done,
                           onSubmitted: (_) => _onSignUp(),
@@ -209,11 +193,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 24),
-
-                        // Sign Up button — gated on _isFormValid.
-                        // FIXED: Gemini had onPressed: () {} which always fired.
-                        // FIXED: removed explicit TextStyle — was overriding
-                        // AppTheme's Inter/w600 button font.
                         Opacity(
                           opacity: _isFormValid ? 1.0 : 0.45,
                           child: ElevatedButton(
@@ -236,8 +215,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-
-                // ── Login link ───────────────────────────────────────────────────
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
