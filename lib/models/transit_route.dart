@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart' show Color;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CrowdLevel
-// ─────────────────────────────────────────────────────────────────────────────
-
 enum CrowdLevel {
   low,
   medium,
@@ -12,15 +8,6 @@ enum CrowdLevel {
   static CrowdLevel fromJson(String value) => CrowdLevel.values.byName(value);
   String toJson() => name;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TransitRoute
-//
-// Immutable value type. routeColor is used by:
-//   • The Polyline drawn on FlutterMap (Task 6)
-//   • The midpoint pill badge background (Task 6)
-//   • The RouteCard accent stripe (future)
-// ─────────────────────────────────────────────────────────────────────────────
 
 class TransitRoute {
   const TransitRoute({
@@ -32,27 +19,19 @@ class TransitRoute {
     required this.stationQueueLevel,
     required this.vehicleOccupancyLevel,
     required this.routeColor,
-  }) : assert(
-         type == 'Train' || type == 'Smart Bus',
-         'type must be "Train" or "Smart Bus"',
-       );
+    this.stationNames =
+        const <String>[], // optional — defaults to empty, never null
+  });
 
   final String id;
   final String name;
-
-  /// "Train" or "Smart Bus"
   final String type;
-
   final int etaMinutes;
   final String fareAmount;
   final CrowdLevel stationQueueLevel;
   final CrowdLevel vehicleOccupancyLevel;
-
-  /// Distinct per-route colour for map polylines and badges.
-  /// Assigned in TransitProvider mock data; backend will supply this in Task 7.
   final Color routeColor;
-
-  // ── Serialisation ──────────────────────────────────────────────────────────
+  final List<String> stationNames;
 
   factory TransitRoute.fromJson(Map<String, dynamic> json) => TransitRoute(
     id: json['id'] as String,
@@ -67,6 +46,9 @@ class TransitRoute {
       json['vehicle_occupancy_level'] as String,
     ),
     routeColor: Color(json['route_color_value'] as int),
+    stationNames: json['station_names'] != null
+        ? List<String>.from(json['station_names'] as List)
+        : const <String>[],
   );
 
   Map<String, dynamic> toJson() => {
@@ -77,10 +59,9 @@ class TransitRoute {
     'fare_amount': fareAmount,
     'station_queue_level': stationQueueLevel.toJson(),
     'vehicle_occupancy_level': vehicleOccupancyLevel.toJson(),
-    'route_color_value': routeColor.toARGB32(),
+    'route_color_value': routeColor.value,
+    'station_names': stationNames,
   };
-
-  // ── copyWith ───────────────────────────────────────────────────────────────
 
   TransitRoute copyWith({
     String? id,
@@ -91,6 +72,7 @@ class TransitRoute {
     CrowdLevel? stationQueueLevel,
     CrowdLevel? vehicleOccupancyLevel,
     Color? routeColor,
+    List<String>? stationNames,
   }) => TransitRoute(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -100,9 +82,8 @@ class TransitRoute {
     stationQueueLevel: stationQueueLevel ?? this.stationQueueLevel,
     vehicleOccupancyLevel: vehicleOccupancyLevel ?? this.vehicleOccupancyLevel,
     routeColor: routeColor ?? this.routeColor,
+    stationNames: stationNames ?? this.stationNames,
   );
-
-  // ── Equality & debug ───────────────────────────────────────────────────────
 
   @override
   bool operator ==(Object other) =>
@@ -113,9 +94,4 @@ class TransitRoute {
 
   @override
   int get hashCode => id.hashCode;
-
-  @override
-  String toString() =>
-      'TransitRoute(id: $id, name: "$name", type: $type, '
-      'eta: ${etaMinutes}min)';
 }
