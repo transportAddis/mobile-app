@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import 'package:mobile_app/providers/theme_provider.dart';
 import 'package:mobile_app/screens/login_screen.dart';
 import 'package:mobile_app/theme/app_theme.dart';
 
@@ -10,8 +12,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  // Local UI state — Task 8: wire to a ThemeProvider / SharedPreferences
-  bool _darkMode = true;
   bool _pushNotifications = true;
 
   void _onLogout() {
@@ -25,6 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final themeProvider = context.watch<ThemeProvider>();
 
     return Scaffold(
       body: SafeArea(
@@ -36,7 +37,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // ── Profile ───────────────────────────────────────────────────
               Column(
                 children: [
-                  // Avatar circle with initials
                   Container(
                     width: 88,
                     height: 88,
@@ -55,8 +55,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
-                  // Name + verified badge
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -75,8 +73,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                   const SizedBox(height: 4),
-
-                  // Phone
                   Text(
                     '+251 911 234 567',
                     style: theme.textTheme.bodyMedium?.copyWith(
@@ -85,7 +81,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 32),
 
               // ── Settings card ─────────────────────────────────────────────
@@ -103,33 +98,84 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: const Text('Language'),
                       subtitle: const Text('English'),
                       trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () {
-                        // TODO(Task 9 – i18n): open language picker
-                      },
+                      onTap: () {},
                     ),
                     Divider(
                       height: 1,
                       color: cs.outline.withValues(alpha: 0.25),
                     ),
 
-                    // Dark Mode toggle
-                    SwitchListTile(
-                      secondary: const Icon(Icons.dark_mode_rounded),
-                      title: const Text('Dark Mode'),
-                      value: _darkMode,
-                      activeColor: AppColors.primary,
-                      onChanged: (val) {
-                        setState(() => _darkMode = val);
-                        // TODO(Task 8): update ThemeProvider so
-                        // MaterialApp.themeMode reacts to this toggle.
-                      },
+                    // ── Theme selector ────────────────────────────────────────
+                    // FIX: SegmentedButton lives below the title in a Padding
+                    // block so it can expand to the full card width.
+                    // Icons removed from ButtonSegments — text-only gives each
+                    // segment room to breathe without wrapping.
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Icon(
+                              Icons.brightness_6_rounded,
+                              color: cs.onSurface,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Theme', style: theme.textTheme.bodyLarge),
+                                const SizedBox(height: 10),
+                                // Full-width SegmentedButton, text labels only
+                                SegmentedButton<ThemeMode>(
+                                  expandedInsets: EdgeInsets.zero,
+                                  style: SegmentedButton.styleFrom(
+                                    selectedBackgroundColor: AppColors.primary
+                                        .withValues(alpha: 0.15),
+                                    selectedForegroundColor: AppColors.primary,
+                                    side: BorderSide(
+                                      color: cs.outline.withValues(alpha: 0.40),
+                                    ),
+                                    textStyle: theme.textTheme.labelMedium,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 10,
+                                    ),
+                                  ),
+                                  segments: const [
+                                    ButtonSegment(
+                                      value: ThemeMode.light,
+                                      label: Text('Light'),
+                                    ),
+                                    ButtonSegment(
+                                      value: ThemeMode.system,
+                                      label: Text('Auto'),
+                                    ),
+                                    ButtonSegment(
+                                      value: ThemeMode.dark,
+                                      label: Text('Dark'),
+                                    ),
+                                  ],
+                                  selected: {themeProvider.themeMode},
+                                  onSelectionChanged: (modes) => context
+                                      .read<ThemeProvider>()
+                                      .setThemeMode(modes.first),
+                                  showSelectedIcon: false,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     Divider(
                       height: 1,
                       color: cs.outline.withValues(alpha: 0.25),
                     ),
 
-                    // Push Notifications toggle
+                    // Push Notifications
                     SwitchListTile(
                       secondary: const Icon(Icons.notifications_rounded),
                       title: const Text('Push Notifications'),
@@ -148,14 +194,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       leading: const Icon(Icons.privacy_tip_outlined),
                       title: const Text('Privacy Policy'),
                       trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () {
-                        // TODO(Task 8): launch privacy URL in WebView
-                      },
+                      onTap: () {},
                     ),
                   ],
                 ),
               ),
-
               const SizedBox(height: 32),
 
               // ── Logout ────────────────────────────────────────────────────
