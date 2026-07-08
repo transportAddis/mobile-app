@@ -180,7 +180,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       secondary: const Icon(Icons.notifications_rounded),
                       title: const Text('Push Notifications'),
                       value: _pushNotifications,
-                      activeColor: AppColors.primary,
+                      activeThumbColor: AppColors.primary,
                       onChanged: (val) =>
                           setState(() => _pushNotifications = val),
                     ),
