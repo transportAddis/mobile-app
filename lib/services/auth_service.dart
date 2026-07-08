@@ -20,7 +20,7 @@ class AuthService {
   AuthService._();
   static final AuthService instance = AuthService._();
 
-  static const String _baseUrl = 'https://api.smarttransit.com';
+  static const String _baseUrl = 'https://back-end-zp70.onrender.com';
   static const String _kTokenKey = 'auth_token';
 
   // ── Public API ─────────────────────────────────────────────────────────────

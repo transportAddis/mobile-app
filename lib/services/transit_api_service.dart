@@ -26,7 +26,7 @@ class TransitApiService {
   TransitApiService._();
   static final TransitApiService instance = TransitApiService._();
 
-  static const String _baseUrl = 'https://api.smarttransit.com';
+  static const String _baseUrl = 'https://back-end-zp70.onrender.com';
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
