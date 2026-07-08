@@ -19,8 +19,7 @@ class TransitRoute {
     required this.stationQueueLevel,
     required this.vehicleOccupancyLevel,
     required this.routeColor,
-    this.stationNames =
-        const <String>[], // optional — defaults to empty, never null
+    this.stationNames = const <String>[],
   });
 
   final String id;
@@ -59,7 +58,8 @@ class TransitRoute {
     'fare_amount': fareAmount,
     'station_queue_level': stationQueueLevel.toJson(),
     'vehicle_occupancy_level': vehicleOccupancyLevel.toJson(),
-    'route_color_value': routeColor.value,
+    // FIX: .value is deprecated — use .toARGB32() for an explicit 32-bit conversion.
+    'route_color_value': routeColor.toARGB32(),
     'station_names': stationNames,
   };
 
