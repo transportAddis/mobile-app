@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
@@ -11,6 +12,7 @@ import 'package:mobile_app/widgets/route_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -18,6 +20,14 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   String _toText = '';
   final MapController _mapController = MapController();
+
+  /// Real device position — null until the user grants permission and GPS resolves.
+  LatLng? _currentLocation;
+
+  /// True while [_getCurrentLocation] is running — disables the FAB spinner.
+  bool _isLocating = false;
+
+  // ── Three distinct Ayat → Mexico Square bus paths ─────────────────────────
 
   final List<LatLng> _path1 = const [
     LatLng(9.0248, 38.8680),
@@ -41,6 +51,8 @@ class _HomeScreenState extends State<HomeScreen> {
     LatLng(9.0100, 38.7450),
   ];
 
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+
   @override
   void initState() {
     super.initState();
@@ -51,9 +63,95 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // ── GPS ───────────────────────────────────────────────────────────────────
+
+  /// Requests permission, obtains the device position, updates state, and
+  /// animates the map to the new coordinates at zoom 15.
+  Future<void> _getCurrentLocation() async {
+    if (_isLocating) return;
+    setState(() => _isLocating = true);
+
+    try {
+      // 1. Check whether the device's location services are on at all.
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _showLocationError(
+          'Location services are disabled. '
+          'Please enable them in your device settings.',
+        );
+        return;
+      }
+
+      // 2. Check current permission status.
+      LocationPermission permission = await Geolocator.checkPermission();
+
+      // 3. Ask for permission if we don't already have it.
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _showLocationError(
+            'Location permission was denied. '
+            'Please allow it to use this feature.',
+          );
+          return;
+        }
+      }
+
+      // 4. Permanently denied — send the user to app settings.
+      if (permission == LocationPermission.deniedForever) {
+        _showLocationError(
+          'Location permission is permanently denied. '
+          'Enable it in App Settings.',
+          openSettings: true,
+        );
+        return;
+      }
+
+      // 5. All clear — get the position.
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+
+      final userLatLng = LatLng(position.latitude, position.longitude);
+
+      if (!mounted) return;
+      setState(() => _currentLocation = userLatLng);
+
+      // 6. Fly the map to the user's position.
+      _mapController.move(userLatLng, 15.0);
+    } catch (e) {
+      _showLocationError('Could not get your location. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
+  }
+
+  void _showLocationError(String message, {bool openSettings = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: openSettings
+            ? SnackBarAction(
+                label: 'Settings',
+                onPressed: Geolocator.openAppSettings,
+              )
+            : null,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
   LatLng _midpoint(List<LatLng> points) => points.isEmpty
       ? const LatLng(9.0174, 38.8065)
       : points[points.length ~/ 2];
+
+  // ── Bottom sheet ───────────────────────────────────────────────────────────
 
   void _showRouteDetails(TransitRoute route) {
     showModalBottomSheet<void>(
@@ -88,6 +186,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ── Search ─────────────────────────────────────────────────────────────────
+
   Future<void> _openSearch() async {
     final result = await Navigator.push<String>(
       context,
@@ -99,11 +199,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ── Build ──────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<TransitProvider>();
     final cs = Theme.of(context).colorScheme;
 
+    // ── Route polylines + station nodes + midpoint badges ───────────────────
     final List<Polyline> polylines = [];
     final List<Marker> markers = [];
 
@@ -114,12 +217,11 @@ class _HomeScreenState extends State<HomeScreen> {
         final route = provider.routes[i];
         final path = paths[i];
 
-        // ── Polyline ────────────────────────────────────────────────────────
         polylines.add(
           Polyline(points: path, color: route.routeColor, strokeWidth: 5.0),
         );
 
-        // ── Station node markers (white circle, colored border) ─────────────
+        // Small white circles with coloured border at each stop.
         for (final point in path) {
           markers.add(
             Marker(
@@ -146,8 +248,7 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
 
-        // ── Midpoint pill badge ──────────────────────────────────────────────
-        // FIX: width 220, Text wrapped in Flexible with ellipsis
+        // Pill badge at the midpoint of each path.
         markers.add(
           Marker(
             point: _midpoint(path),
@@ -201,10 +302,45 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
+    // ── Blue-dot user location marker ────────────────────────────────────────
+    if (_currentLocation != null) {
+      markers.add(
+        Marker(
+          point: _currentLocation!,
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          child: Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A73E8), // Google Maps blue
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 3),
+              boxShadow: [
+                // Glow / pulse ring
+                BoxShadow(
+                  color: const Color(0xFF1A73E8).withValues(alpha: 0.35),
+                  blurRadius: 10,
+                  spreadRadius: 4,
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.20),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
+          // ── Map ────────────────────────────────────────────────────────────
           FlutterMap(
             mapController: _mapController,
             options: const MapOptions(
@@ -221,7 +357,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
 
-          // Floating search bar
+          // ── Floating search bar ────────────────────────────────────────────
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -294,7 +430,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // My Location FAB
+          // ── My Location FAB ───────────────────────────────────────────────
           Positioned(
             bottom: 24,
             right: 16,
@@ -303,9 +439,18 @@ class _HomeScreenState extends State<HomeScreen> {
               backgroundColor: cs.surface,
               foregroundColor: cs.primary,
               elevation: 4,
-              onPressed: () =>
-                  _mapController.move(const LatLng(9.0174, 38.8065), 11.5),
-              child: const Icon(Icons.my_location_rounded),
+              // Show a mini spinner while locating, icon when idle.
+              onPressed: _isLocating ? null : _getCurrentLocation,
+              child: _isLocating
+                  ? SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: cs.primary,
+                      ),
+                    )
+                  : const Icon(Icons.my_location_rounded),
             ),
           ),
         ],
