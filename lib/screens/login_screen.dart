@@ -3,15 +3,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:mobile_app/screens/main_shell.dart';
 import 'package:mobile_app/screens/register_screen.dart';
-
-const _kGoogleSvg = '''
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-</svg>
-''';
+import 'package:mobile_app/services/api_exceptions.dart';
+import 'package:mobile_app/services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -24,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -43,12 +37,33 @@ class _LoginScreenState extends State<LoginScreen> {
       _emailController.text.trim().contains('@') &&
       _passwordController.text.length >= 6;
 
-  void _onLogin() {
-    if (!_isFormValid) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(builder: (_) => const MainShell()),
-      (_) => false,
-    );
+  Future<void> _onLogin() async {
+    if (!_isFormValid || _isLoading) return;
+    setState(() => _isLoading = true);
+
+    try {
+      await AuthService.instance.login(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+        (_) => false,
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -109,6 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         TextField(
                           controller: _emailController,
+                          enabled: !_isLoading,
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
                           autocorrect: false,
@@ -126,6 +142,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 16),
                         TextField(
                           controller: _passwordController,
+                          enabled: !_isLoading,
                           obscureText: _obscurePassword,
                           textInputAction: TextInputAction.done,
                           onSubmitted: (_) => _onLogin(),
@@ -154,7 +171,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         Opacity(
                           opacity: _isFormValid ? 1.0 : 0.45,
                           child: ElevatedButton(
-                            onPressed: _isFormValid ? _onLogin : null,
+                            onPressed: (_isFormValid && !_isLoading)
+                                ? _onLogin
+                                : null,
                             style: ElevatedButton.styleFrom(
                               disabledBackgroundColor: colors.primary,
                               disabledForegroundColor: Colors.white,
@@ -165,7 +184,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
-                            child: const Text('Login'),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2.5,
+                                    ),
+                                  )
+                                : const Text('Login'),
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -198,28 +226,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 24),
-                        OutlinedButton.icon(
-                          onPressed: () {},
-                          icon: SvgPicture.string(
-                            _kGoogleSvg,
-                            width: 20,
-                            height: 20,
-                          ),
-                          label: const Text('Continue with Google'),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: const RoundedRectangleBorder(
-                              borderRadius: BorderRadius.all(
-                                Radius.circular(12),
-                              ),
-                            ),
-                            side: BorderSide(
-                              color: theme.dividerColor,
-                              width: 2,
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -233,12 +239,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: theme.textTheme.bodyMedium,
                     ),
                     TextButton(
-                      onPressed: () => Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => const RegisterScreen(),
-                        ),
-                      ),
+                      onPressed: _isLoading
+                          ? null
+                          : () => Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) => const RegisterScreen(),
+                              ),
+                            ),
                       child: Text(
                         'Sign up',
                         style: TextStyle(

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_app/screens/login_screen.dart';
 import 'package:mobile_app/screens/main_shell.dart';
+import 'package:mobile_app/services/api_exceptions.dart';
+import 'package:mobile_app/services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -12,16 +14,15 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _nameController.addListener(() => setState(() {}));
     _emailController.addListener(() => setState(() {}));
-    _phoneController.addListener(() => setState(() {}));
     _passwordController.addListener(() => setState(() {}));
   }
 
@@ -29,7 +30,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
-    _phoneController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -37,15 +37,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool get _isFormValid =>
       _nameController.text.trim().isNotEmpty &&
       _emailController.text.trim().contains('@') &&
-      _phoneController.text.length == 9 &&
       _passwordController.text.length >= 6;
 
-  void _onSignUp() {
-    if (!_isFormValid) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(builder: (_) => const MainShell()),
-      (_) => false,
-    );
+  Future<void> _onSignUp() async {
+    if (!_isFormValid || _isLoading) return;
+    setState(() => _isLoading = true);
+
+    try {
+      await AuthService.instance.register(
+        fullName: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+        (_) => false,
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -91,6 +112,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       children: [
                         TextField(
                           controller: _nameController,
+                          enabled: !_isLoading,
                           textCapitalization: TextCapitalization.words,
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
@@ -107,6 +129,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         const SizedBox(height: 16),
                         TextField(
                           controller: _emailController,
+                          enabled: !_isLoading,
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
                           autocorrect: false,
@@ -123,51 +146,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         const SizedBox(height: 16),
                         TextField(
-                          controller: _phoneController,
-                          keyboardType: TextInputType.phone,
-                          textInputAction: TextInputAction.next,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(9),
-                          ],
-                          decoration: InputDecoration(
-                            hintText: '9XX XXX XXXX',
-                            prefixIcon: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Text(
-                                    '🇪🇹',
-                                    style: TextStyle(fontSize: 20),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '+251',
-                                    style: theme.textTheme.bodyLarge,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    width: 1,
-                                    height: 24,
-                                    color: theme.dividerColor,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            filled: true,
-                            fillColor: theme.scaffoldBackgroundColor,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
                           controller: _passwordController,
+                          enabled: !_isLoading,
                           obscureText: _obscurePassword,
                           textInputAction: TextInputAction.done,
                           onSubmitted: (_) => _onSignUp(),
@@ -196,7 +176,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         Opacity(
                           opacity: _isFormValid ? 1.0 : 0.45,
                           child: ElevatedButton(
-                            onPressed: _isFormValid ? _onSignUp : null,
+                            onPressed: (_isFormValid && !_isLoading)
+                                ? _onSignUp
+                                : null,
                             style: ElevatedButton.styleFrom(
                               disabledBackgroundColor: colors.primary,
                               disabledForegroundColor: Colors.white,
@@ -207,7 +189,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                               ),
                             ),
-                            child: const Text('Sign Up'),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2.5,
+                                    ),
+                                  )
+                                : const Text('Sign Up'),
                           ),
                         ),
                       ],
@@ -223,12 +214,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       style: theme.textTheme.bodyMedium,
                     ),
                     TextButton(
-                      onPressed: () => Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => const LoginScreen(),
-                        ),
-                      ),
+                      onPressed: _isLoading
+                          ? null
+                          : () => Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) => const LoginScreen(),
+                              ),
+                            ),
                       child: Text(
                         'Login',
                         style: TextStyle(
