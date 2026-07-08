@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:mobile_app/screens/main_shell.dart';
 import 'package:mobile_app/screens/register_screen.dart';

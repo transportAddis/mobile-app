@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:mobile_app/screens/login_screen.dart';
 import 'package:mobile_app/screens/main_shell.dart';
 import 'package:mobile_app/services/api_exceptions.dart';

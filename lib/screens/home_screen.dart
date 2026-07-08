@@ -21,35 +21,14 @@ class _HomeScreenState extends State<HomeScreen> {
   String _toText = '';
   final MapController _mapController = MapController();
 
-  /// Real device position — null until the user grants permission and GPS resolves.
+  /// Real device position — null until permission is granted and GPS resolves.
   LatLng? _currentLocation;
-
-  /// True while [_getCurrentLocation] is running — disables the FAB spinner.
   bool _isLocating = false;
 
-  // ── Three distinct Ayat → Mexico Square bus paths ─────────────────────────
-
-  final List<LatLng> _path1 = const [
-    LatLng(9.0248, 38.8680),
-    LatLng(9.0195, 38.8005),
-    LatLng(9.0142, 38.7808),
-    LatLng(9.0103, 38.7617),
-    LatLng(9.0100, 38.7450),
-  ];
-  final List<LatLng> _path2 = const [
-    LatLng(9.0248, 38.8680),
-    LatLng(8.9950, 38.8100),
-    LatLng(8.9890, 38.7890),
-    LatLng(9.0103, 38.7617),
-    LatLng(9.0100, 38.7450),
-  ];
-  final List<LatLng> _path3 = const [
-    LatLng(9.0248, 38.8680),
-    LatLng(9.0400, 38.8300),
-    LatLng(9.0350, 38.7650),
-    LatLng(9.0320, 38.7520),
-    LatLng(9.0100, 38.7450),
-  ];
+  // NOTE: the three hardcoded _path1/_path2/_path3 lists that used to live
+  // here have moved to TransitProvider — they're now the fallback dataset
+  // shared by fetchMockData() and searchRoutes(). Routes drawn on this
+  // screen always come from provider.routes[i].coordinates.
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -65,31 +44,26 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── GPS ───────────────────────────────────────────────────────────────────
 
-  /// Requests permission, obtains the device position, updates state, and
-  /// animates the map to the new coordinates at zoom 15.
   Future<void> _getCurrentLocation() async {
     if (_isLocating) return;
     setState(() => _isLocating = true);
 
     try {
-      // 1. Check whether the device's location services are on at all.
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _showLocationError(
+        _showSnack(
           'Location services are disabled. '
           'Please enable them in your device settings.',
         );
         return;
       }
 
-      // 2. Check current permission status.
       LocationPermission permission = await Geolocator.checkPermission();
 
-      // 3. Ask for permission if we don't already have it.
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          _showLocationError(
+          _showSnack(
             'Location permission was denied. '
             'Please allow it to use this feature.',
           );
@@ -97,9 +71,8 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      // 4. Permanently denied — send the user to app settings.
       if (permission == LocationPermission.deniedForever) {
-        _showLocationError(
+        _showSnack(
           'Location permission is permanently denied. '
           'Enable it in App Settings.',
           openSettings: true,
@@ -107,7 +80,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      // 5. All clear — get the position.
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -115,26 +87,23 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       final userLatLng = LatLng(position.latitude, position.longitude);
-
       if (!mounted) return;
       setState(() => _currentLocation = userLatLng);
-
-      // 6. Fly the map to the user's position.
       _mapController.move(userLatLng, 15.0);
     } catch (e) {
-      _showLocationError('Could not get your location. Please try again.');
+      _showSnack('Could not get your location. Please try again.');
     } finally {
       if (mounted) setState(() => _isLocating = false);
     }
   }
 
-  void _showLocationError(String message, {bool openSettings = false}) {
+  void _showSnack(String message, {bool openSettings = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         action: openSettings
-            ? SnackBarAction(
+            ? const SnackBarAction(
                 label: 'Settings',
                 onPressed: Geolocator.openAppSettings,
               )
@@ -150,6 +119,23 @@ class _HomeScreenState extends State<HomeScreen> {
   LatLng _midpoint(List<LatLng> points) => points.isEmpty
       ? const LatLng(9.0174, 38.8065)
       : points[points.length ~/ 2];
+
+  /// SearchScreen currently returns a plain destination name — its dataset is
+  /// a static mock list with no real backend station IDs yet. Until it's
+  /// wired to a live station-search endpoint, we try to resolve a real ID by
+  /// matching the name against provider.nearbyStations; if nothing matches
+  /// (the common case today, since nearby stations are near the USER and
+  /// destinations are elsewhere), we fall back to a slugified name. This is
+  /// a synthetic ID — the provider's mock-fallback logic will kick in if the
+  /// backend can't resolve it, so the UI stays functional either way.
+  String _resolveDestinationId(String name, TransitProvider provider) {
+    for (final station in provider.nearbyStations) {
+      if (station.name.toLowerCase() == name.toLowerCase()) {
+        return station.id;
+      }
+    }
+    return name.toLowerCase().replaceAll(' ', '-');
+  }
 
   // ── Bottom sheet ───────────────────────────────────────────────────────────
 
@@ -186,16 +172,31 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ── Search ─────────────────────────────────────────────────────────────────
+  // ── Search → live route search ─────────────────────────────────────────────
 
   Future<void> _openSearch() async {
     final result = await Navigator.push<String>(
       context,
       MaterialPageRoute<String>(builder: (_) => const SearchScreen()),
     );
-    if (result != null && result.isNotEmpty && mounted) {
-      setState(() => _toText = result);
-      _mapController.move(const LatLng(9.0174, 38.8065), 11.5);
+    if (result == null || result.isEmpty || !mounted) return;
+
+    setState(() => _toText = result);
+
+    final provider = context.read<TransitProvider>();
+    final destinationId = _resolveDestinationId(result, provider);
+    final activeNearbyStationIds = provider.nearbyStations
+        .map((s) => s.id)
+        .toList();
+
+    await provider.searchRoutes(destinationId, activeNearbyStationIds);
+
+    if (!mounted || provider.routes.isEmpty) return;
+
+    // Recenter on the first returned route's midpoint.
+    final firstPath = provider.routes.first.coordinates;
+    if (firstPath.isNotEmpty) {
+      _mapController.move(_midpoint(firstPath), 12.0);
     }
   }
 
@@ -206,22 +207,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final provider = context.watch<TransitProvider>();
     final cs = Theme.of(context).colorScheme;
 
-    // ── Route polylines + station nodes + midpoint badges ───────────────────
     final List<Polyline> polylines = [];
     final List<Marker> markers = [];
 
     if (_toText.isNotEmpty && provider.routes.isNotEmpty) {
-      final paths = [_path1, _path2, _path3];
-
       for (int i = 0; i < 3 && i < provider.routes.length; i++) {
         final route = provider.routes[i];
-        final path = paths[i];
+        final path = route.coordinates;
+        if (path.isEmpty) continue; // defensive: skip a route with no path data
 
         polylines.add(
           Polyline(points: path, color: route.routeColor, strokeWidth: 5.0),
         );
 
-        // Small white circles with coloured border at each stop.
+        // Station node markers — small white circles, coloured border.
         for (final point in path) {
           markers.add(
             Marker(
@@ -248,7 +247,7 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
 
-        // Pill badge at the midpoint of each path.
+        // Midpoint pill badge.
         markers.add(
           Marker(
             point: _midpoint(path),
@@ -302,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // ── Blue-dot user location marker ────────────────────────────────────────
+    // Blue-dot user location marker.
     if (_currentLocation != null) {
       markers.add(
         Marker(
@@ -314,11 +313,10 @@ class _HomeScreenState extends State<HomeScreen> {
             width: 22,
             height: 22,
             decoration: BoxDecoration(
-              color: const Color(0xFF1A73E8), // Google Maps blue
+              color: const Color(0xFF1A73E8),
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white, width: 3),
               boxShadow: [
-                // Glow / pulse ring
                 BoxShadow(
                   color: const Color(0xFF1A73E8).withValues(alpha: 0.35),
                   blurRadius: 10,
@@ -340,7 +338,6 @@ class _HomeScreenState extends State<HomeScreen> {
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
-          // ── Map ────────────────────────────────────────────────────────────
           FlutterMap(
             mapController: _mapController,
             options: const MapOptions(
@@ -357,7 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
 
-          // ── Floating search bar ────────────────────────────────────────────
+          // Floating search bar
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -430,7 +427,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // ── My Location FAB ───────────────────────────────────────────────
+          // My Location FAB
           Positioned(
             bottom: 24,
             right: 16,
@@ -439,7 +436,6 @@ class _HomeScreenState extends State<HomeScreen> {
               backgroundColor: cs.surface,
               foregroundColor: cs.primary,
               elevation: 4,
-              // Show a mini spinner while locating, icon when idle.
               onPressed: _isLocating ? null : _getCurrentLocation,
               child: _isLocating
                   ? SizedBox(
