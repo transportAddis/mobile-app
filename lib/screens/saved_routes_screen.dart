@@ -3,9 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:mobile_app/models/transit_route.dart';
 import 'package:mobile_app/theme/app_theme.dart';
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
-// TODO(Task 8): Load from shared_preferences instead of this list.
-
 class _SavedRoute {
   const _SavedRoute({
     required this.name,
@@ -16,11 +13,8 @@ class _SavedRoute {
     required this.routeColor,
     required this.queueLevel,
   });
-  final String name;
-  final String from;
-  final String to;
+  final String name, from, to, routeType;
   final int etaMinutes;
-  final String routeType;
   final Color routeColor;
   final CrowdLevel queueLevel;
 }
@@ -40,8 +34,8 @@ const List<_SavedRoute> _mockSaved = [
     from: 'Lebu Station',
     to: 'Piassa',
     etaMinutes: 18,
-    routeType: 'Train',
-    routeColor: Color(0xFF1565C0),
+    routeType: 'City Bus',
+    routeColor: Color(0xFF00695C),
     queueLevel: CrowdLevel.medium,
   ),
   _SavedRoute(
@@ -50,12 +44,10 @@ const List<_SavedRoute> _mockSaved = [
     to: 'Merkato',
     etaMinutes: 35,
     routeType: 'Smart Bus',
-    routeColor: Color(0xFF00695C),
+    routeColor: Color(0xFF6A1B9A),
     queueLevel: CrowdLevel.high,
   ),
 ];
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 class SavedRoutesScreen extends StatelessWidget {
   const SavedRoutesScreen({super.key});
@@ -92,8 +84,6 @@ class SavedRoutesScreen extends StatelessWidget {
   }
 }
 
-// ─── Card ─────────────────────────────────────────────────────────────────────
-
 class _SavedRouteCard extends StatelessWidget {
   const _SavedRouteCard({required this.route});
   final _SavedRoute route;
@@ -128,7 +118,6 @@ class _SavedRouteCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Top row: route colour dot | name | queue badge ─────────────
               Row(
                 children: [
                   Container(
@@ -148,7 +137,6 @@ class _SavedRouteCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Queue status pill
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
@@ -182,13 +170,11 @@ class _SavedRouteCard extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 12),
-
-              // ── Middle row: from → to ──────────────────────────────────────
               Row(
                 children: [
-                  Icon(
+                  // FIX: both icons below are compile-time constants — const added.
+                  const Icon(
                     Icons.trip_origin_rounded,
                     size: 10,
                     color: AppColors.crowdLow,
@@ -208,7 +194,7 @@ class _SavedRouteCard extends StatelessWidget {
                       color: cs.onSurfaceVariant,
                     ),
                   ),
-                  Icon(
+                  const Icon(
                     Icons.location_on_rounded,
                     size: 10,
                     color: AppColors.crowdHigh,
@@ -225,16 +211,13 @@ class _SavedRouteCard extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 12),
-
-              // ── Bottom row: transport type | ETA ──────────────────────────
               Row(
                 children: [
                   Icon(
-                    route.routeType == 'Train'
-                        ? Icons.train_rounded
-                        : Icons.directions_bus_rounded,
+                    route.routeType == 'City Bus'
+                        ? Icons.directions_bus_rounded
+                        : Icons.airport_shuttle_rounded,
                     size: 16,
                     color: cs.onSurfaceVariant,
                   ),

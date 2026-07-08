@@ -50,10 +50,12 @@ class TransitProvider extends ChangeNotifier {
         await Future.delayed(const Duration(milliseconds: 400));
         s = _mockStations(750);
       }
-      if (s.isEmpty)
+      // FIX: braces added around both branches (curly_braces_in_flow_control_structures)
+      if (s.isEmpty) {
         _stationsError = 'No stations found near you.';
-      else
+      } else {
         _nearbyStations = s;
+      }
     } catch (e, stack) {
       _stationsError = 'Could not load nearby stations.';
       debugPrint('[TransitProvider] $e\n$stack');
@@ -62,8 +64,6 @@ class TransitProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
-
-  // ── Bus-Only routes — NO trains, NO rail ──────────────────────────────────
 
   static List<TransitRoute> _buildMockRoutes() => [
     const TransitRoute(
