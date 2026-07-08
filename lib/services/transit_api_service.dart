@@ -44,7 +44,7 @@ class TransitApiService {
     required double lng,
     required double radius,
   }) async {
-    final uri = Uri.parse('$_baseUrl/passenger/stations/nearby').replace(
+    final uri = Uri.parse('$_baseUrl/passenger/stations/nearby/').replace(
       queryParameters: {
         'latitude': lat.toString(),
         'longitude': lng.toString(),
@@ -71,7 +71,7 @@ class TransitApiService {
     required String destinationStationId,
     required List<String> nearbyStationIds,
   }) async {
-    final uri = Uri.parse('$_baseUrl/passenger/routes/search');
+    final uri = Uri.parse('$_baseUrl/passenger/routes/search/');
 
     final response = await _post(
       uri,
