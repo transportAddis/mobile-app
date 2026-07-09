@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color;
 import 'package:latlong2/latlong.dart';
@@ -8,11 +10,6 @@ import 'package:mobile_app/services/transit_api_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TransitProvider
-//
-// searchRoutes() calls the live backend and parses its nested-segment JSON
-// shape into flat TransitRoute.coordinates lists. Any failure — empty
-// result, network error, or malformed JSON — falls back to 3 hand-picked
-// mock Addis Ababa paths so the map is never left blank.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class TransitProvider extends ChangeNotifier {
@@ -25,6 +22,9 @@ class TransitProvider extends ChangeNotifier {
   List<NearbyStation> _nearbyStations = [];
   bool _isLoadingStations = false;
   String? _stationsError;
+
+  /// Full city-wide station cache, used by SearchScreen's autocomplete.
+  List<NearbyStation> _allStations = [];
 
   // ── Public getters ─────────────────────────────────────────────────────────
 
@@ -39,11 +39,10 @@ class TransitProvider extends ChangeNotifier {
   String? get stationsError => _stationsError;
   bool get hasNearbyStations => _nearbyStations.isNotEmpty;
 
-  // ── Fetch: initial mock routes (unchanged entry point) ─────────────────────
+  List<NearbyStation> get allStations => List.unmodifiable(_allStations);
 
-  /// Populates [routes] with the same fallback dataset used by [searchRoutes]
-  /// when the API is unreachable. Kept for the initial app-open state, before
-  /// the user has picked a destination.
+  // ── Fetch: initial mock routes (unchanged) ──────────────────────────────────
+
   Future<void> fetchMockData() async {
     _isLoading = true;
     _error = null;
@@ -61,8 +60,40 @@ class TransitProvider extends ChangeNotifier {
     }
   }
 
-  // ── Fetch: nearby stations (500 m → 750 m fallback, unchanged) ────────────
+  // ── Fetch: full station cache for autocomplete (NEW) ────────────────────────
 
+  /// Populates [allStations] with every station in Addis Ababa, queried once
+  /// on app open via a 100km radius from the city centre. Backs the
+  /// SearchScreen autocomplete list.
+  ///
+  /// On failure, [_allStations] is simply left as-is (likely empty) —
+  /// SearchScreen shows a loading/empty state rather than fake data.
+  Future<void> fetchAllStations() async {
+    try {
+      final raw = await TransitApiService.instance.getNearbyStations(
+        lat: 9.0248,
+        lng: 38.7469,
+        radius: 100000.0,
+      );
+      _allStations = raw
+          .map((e) => NearbyStation.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e, stack) {
+      debugPrint('[TransitProvider] fetchAllStations error: $e\n$stack');
+    } finally {
+      notifyListeners();
+    }
+  }
+
+  // ── Fetch: nearby stations (500 m → 750 m fallback, now LIVE) ──────────────
+
+  /// Queries the backend for stations near [lat]/[lng]:
+  ///   1. 500 m  →  if ≤ 2 results, retry at 750 m.
+  ///   2. 750 m  →  if still empty, sets [stationsError].
+  ///
+  /// Each station's [NearbyStation.distanceMeters] is recomputed client-side
+  /// via Haversine using [lat]/[lng] as the origin, since the backend's
+  /// per-station payload isn't guaranteed to include a distance field.
   Future<void> fetchNearbyStations(double lat, double lng) async {
     _isLoadingStations = true;
     _stationsError = null;
@@ -70,12 +101,11 @@ class TransitProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 600));
-      var stations = _mockStations(500);
+      var stations = await _fetchStationsAtRadius(lat, lng, 500);
 
       if (stations.length <= 2) {
-        await Future.delayed(const Duration(milliseconds: 400));
-        stations = _mockStations(750);
+        debugPrint('[TransitProvider] ≤2 stations at 500m — retrying at 750m.');
+        stations = await _fetchStationsAtRadius(lat, lng, 750);
       }
 
       if (stations.isEmpty) {
@@ -92,18 +122,56 @@ class TransitProvider extends ChangeNotifier {
     }
   }
 
-  // ── Fetch: live route search (NEW) ──────────────────────────────────────────
+  Future<List<NearbyStation>> _fetchStationsAtRadius(
+    double lat,
+    double lng,
+    double radius,
+  ) async {
+    final raw = await TransitApiService.instance.getNearbyStations(
+      lat: lat,
+      lng: lng,
+      radius: radius,
+    );
 
-  /// Calls the backend's route-search endpoint and parses the result into
-  /// [TransitRoute] objects carrying real map coordinates.
-  ///
-  /// Backend response shape: `List<List<Map<String, dynamic>>>` — an array
-  /// of alternative paths, each path being an ordered list of route segments.
-  ///
-  /// Fail-safe: on an empty response, a network exception, or any parsing
-  /// failure, this method logs a debug message and loads 3 mock Addis Ababa
-  /// paths instead of leaving [routes] empty. The map always has something
-  /// to show.
+    return raw
+        .map((e) => NearbyStation.fromJson(e as Map<String, dynamic>))
+        .map(
+          (station) => station.copyWith(
+            distanceMeters: _haversineMeters(
+              lat,
+              lng,
+              station.latitude,
+              station.longitude,
+            ),
+          ),
+        )
+        .toList();
+  }
+
+  /// Great-circle distance between two coordinates, in metres.
+  static double _haversineMeters(
+    double lat1,
+    double lng1,
+    double lat2,
+    double lng2,
+  ) {
+    const earthRadius = 6371000.0;
+    final dLat = _degToRad(lat2 - lat1);
+    final dLng = _degToRad(lng2 - lng1);
+    final a =
+        sin(dLat / 2) * sin(dLat / 2) +
+        cos(_degToRad(lat1)) *
+            cos(_degToRad(lat2)) *
+            sin(dLng / 2) *
+            sin(dLng / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  static double _degToRad(double deg) => deg * (pi / 180.0);
+
+  // ── Fetch: live route search (unchanged from previous task) ────────────────
+
   Future<void> searchRoutes(
     String destinationId,
     List<String> nearbyIds,
@@ -127,7 +195,6 @@ class TransitProvider extends ChangeNotifier {
       } else {
         final parsed = _parseRoutesFromApi(rawPaths);
         if (parsed.isEmpty) {
-          // Every path in the response was malformed — same fail-safe.
           debugPrint(
             '[TransitProvider] searchRoutes parsed 0 usable routes — '
             'loading mock fallback paths.',
@@ -138,8 +205,6 @@ class TransitProvider extends ChangeNotifier {
         }
       }
     } catch (e, stack) {
-      // Covers ApiException (network/HTTP), SocketException, FormatException,
-      // and any unexpected cast failure during parsing.
       debugPrint(
         '[TransitProvider] searchRoutes failed ($e) — '
         'loading mock fallback paths.\n$stack',
@@ -151,21 +216,6 @@ class TransitProvider extends ChangeNotifier {
     }
   }
 
-  // ── JSON parsing (CRITICAL PATH) ────────────────────────────────────────────
-
-  /// Converts the raw `List<List<Map>>` API response into [TransitRoute]s.
-  ///
-  /// For each path:
-  ///   1. coordinates[0]  = segments.first.originStation      (lat/lng parsed)
-  ///   2. coordinates[1+] = every segment's destinationStation, in order
-  ///   3. Route-level metadata (name, queueLevel, fareInfo, etaMinutes) is
-  ///      read from the FIRST segment — the assumption is that these fields
-  ///      describe the route as a whole and are repeated on every segment,
-  ///      or at minimum present on the first one. If your backend contract
-  ///      differs (e.g. metadata lives on a separate top-level object),
-  ///      update `_parseRoutesFromApi` accordingly.
-  ///   4. A malformed individual path is skipped (not fatal) so one bad
-  ///      entry doesn't blank out the other valid route options.
   static List<TransitRoute> _parseRoutesFromApi(List<dynamic> rawPaths) {
     final routes = <TransitRoute>[];
 
@@ -178,13 +228,11 @@ class TransitProvider extends ChangeNotifier {
         final coordinates = <LatLng>[];
         final stopNames = <String>[];
 
-        // First point: originStation of the first segment.
         final firstOrigin =
             segments.first['originStation'] as Map<String, dynamic>;
         coordinates.add(_parseLatLng(firstOrigin));
         stopNames.add(_stationName(firstOrigin));
 
-        // Every segment contributes its destinationStation as the next point.
         for (final segment in segments) {
           final dest = segment['destinationStation'] as Map<String, dynamic>;
           coordinates.add(_parseLatLng(dest));
@@ -197,15 +245,10 @@ class TransitProvider extends ChangeNotifier {
           TransitRoute(
             id: (meta['id'] ?? meta['routeId'] ?? 'route_$i').toString(),
             name: (meta['name'] as String?) ?? 'Route ${i + 1}',
-            // Bus-only system — default to Smart Bus if the field is absent.
             type: (meta['type'] as String?) ?? 'Smart Bus',
             etaMinutes: _parseEta(meta['etaMinutes']),
-            // fareInfo (backend) -> fareAmount (model)
             fareAmount: (meta['fareInfo'] as String?) ?? 'ETB —',
             stationQueueLevel: _parseCrowdLevel(meta['queueLevel']),
-            // NOTE: backend contract doesn't yet specify a vehicle-occupancy
-            // field name. Checked against 'occupancyLevel' defensively;
-            // defaults to medium until confirmed with the backend team.
             vehicleOccupancyLevel: _parseCrowdLevel(meta['occupancyLevel']),
             routeColor: _kRoutePalette[i % _kRoutePalette.length],
             stationNames: stopNames,
@@ -221,8 +264,6 @@ class TransitProvider extends ChangeNotifier {
     return routes;
   }
 
-  /// Parses a station map's latitude/longitude, both sent as Strings by the
-  /// backend, into a [LatLng] via `double.parse` as specified.
   static LatLng _parseLatLng(Map<String, dynamic> station) {
     final lat = double.parse(station['latitude'] as String);
     final lng = double.parse(station['longitude'] as String);
@@ -249,20 +290,16 @@ class TransitProvider extends ChangeNotifier {
     return CrowdLevel.medium;
   }
 
-  // ── Mock fallback data ──────────────────────────────────────────────────────
+  // ── Mock fallback data (unchanged) ──────────────────────────────────────────
 
-  /// Distinct colours assigned client-side by route index — the backend does
-  /// not send colours, that remains a UI concern.
   static const List<Color> _kRoutePalette = [
-    Color(0xFFDE613B), // terracotta (brand primary)
-    Color(0xFF00695C), // deep teal
-    Color(0xFF6A1B9A), // deep purple
-    Color(0xFFF57F17), // warm mustard (spare, if backend ever returns 4+)
-    Color(0xFF2E7D32), // forest green (spare)
+    Color(0xFFDE613B),
+    Color(0xFF00695C),
+    Color(0xFF6A1B9A),
+    Color(0xFFF57F17),
+    Color(0xFF2E7D32),
   ];
 
-  // Three distinct Ayat → Mexico Square paths (same coordinates previously
-  // hardcoded in HomeScreen — now the single source of truth lives here).
   static const List<LatLng> _path1 = [
     LatLng(9.0248, 38.8680),
     LatLng(9.0195, 38.8005),
@@ -285,8 +322,6 @@ class TransitProvider extends ChangeNotifier {
     LatLng(9.0100, 38.7450),
   ];
 
-  /// The fail-safe dataset: used on initial load (fetchMockData) and
-  /// whenever searchRoutes can't get usable data from the backend.
   static List<TransitRoute> _buildFallbackRoutes() => const [
     TransitRoute(
       id: 'ab-14',
@@ -325,19 +360,4 @@ class TransitProvider extends ChangeNotifier {
       coordinates: _path3,
     ),
   ];
-
-  static List<NearbyStation> _mockStations(double radius) {
-    if (radius <= 500) {
-      return const [
-        NearbyStation(id: 's-ayat', name: 'Ayat Terminal', distanceMeters: 320),
-        NearbyStation(id: 's-summit', name: 'Summit Stop', distanceMeters: 480),
-      ];
-    }
-    return const [
-      NearbyStation(id: 's-ayat', name: 'Ayat Terminal', distanceMeters: 320),
-      NearbyStation(id: 's-summit', name: 'Summit Stop', distanceMeters: 480),
-      NearbyStation(id: 's-lebu', name: 'Lebu Stop', distanceMeters: 620),
-      NearbyStation(id: 's-qality', name: 'Qality Stop', distanceMeters: 710),
-    ];
-  }
 }
