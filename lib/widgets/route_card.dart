@@ -5,10 +5,20 @@ import 'package:mobile_app/theme/app_theme.dart';
 import 'package:mobile_app/widgets/crowd_indicator_bar.dart';
 
 class RouteCard extends StatelessWidget {
-  const RouteCard({super.key, required this.route, this.onTap});
+  const RouteCard({
+    super.key,
+    required this.route,
+    this.onTap,
+    this.isBest = false,
+  });
 
   final TransitRoute route;
   final VoidCallback? onTap;
+
+  /// True when this is the recommended/fastest route (index 0 from
+  /// TransitProvider.routes). Renders a small "FASTEST" badge at the
+  /// top-left of the card.
+  final bool isBest;
 
   static const BorderRadius _cardRadius = BorderRadius.all(Radius.circular(16));
 
@@ -44,6 +54,40 @@ class RouteCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              // ── "FASTEST" badge (top-left, only for the best route) ────────
+              if (isBest) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.flash_on_rounded,
+                        size: 12,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'FASTEST',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
               // ── Top row ────────────────────────────────────────────────────
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -126,7 +170,7 @@ class RouteCard extends StatelessWidget {
                 ),
               ),
 
-              // ── Station timeline (only shown when names are available) ──────
+              // ── Station timeline ───────────────────────────────────────────
               if (route.stationNames.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 Text(

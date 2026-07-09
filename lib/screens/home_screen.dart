@@ -21,14 +21,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String _toText = '';
   final MapController _mapController = MapController();
 
-  /// Real device position — null until permission is granted and GPS resolves.
   LatLng? _currentLocation;
   bool _isLocating = false;
-
-  // NOTE: the three hardcoded _path1/_path2/_path3 lists that used to live
-  // here have moved to TransitProvider — they're now the fallback dataset
-  // shared by fetchMockData() and searchRoutes(). Routes drawn on this
-  // screen always come from provider.routes[i].coordinates.
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -38,7 +32,14 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final p = context.read<TransitProvider>();
       p.fetchMockData();
-      p.fetchNearbyStations(9.0248, 38.8680);
+      // Populates the city-wide station cache used by SearchScreen's
+      // autocomplete. NOTE: the old hardcoded-anchor fetchNearbyStations()
+      // call that used to live here has been removed — real nearby-station
+      // data now comes from _getCurrentLocation() once GPS resolves, so
+      // station pins won't appear until the user taps "My Location" (or
+      // grants location permission). Happy to auto-trigger this on launch
+      // in a follow-up if you'd rather prompt for location immediately.
+      p.fetchAllStations();
     });
   }
 
@@ -47,6 +48,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _getCurrentLocation() async {
     if (_isLocating) return;
     setState(() => _isLocating = true);
+
+    // Captured before any `await` so we never touch context across an async
+    // gap (avoids use_build_context_synchronously).
+    final transitProvider = context.read<TransitProvider>();
 
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -59,7 +64,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
-
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
@@ -90,6 +94,13 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() => _currentLocation = userLatLng);
       _mapController.move(userLatLng, 15.0);
+
+      // NEW: chain into a real nearby-stations fetch now that we know
+      // exactly where the user is (500m → 750m fallback happens inside).
+      await transitProvider.fetchNearbyStations(
+        userLatLng.latitude,
+        userLatLng.longitude,
+      );
     } catch (e) {
       _showSnack('Could not get your location. Please try again.');
     } finally {
@@ -103,7 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
       SnackBar(
         content: Text(message),
         action: openSettings
-            ? const SnackBarAction(
+            ? SnackBarAction(
                 label: 'Settings',
                 onPressed: Geolocator.openAppSettings,
               )
@@ -120,26 +131,15 @@ class _HomeScreenState extends State<HomeScreen> {
       ? const LatLng(9.0174, 38.8065)
       : points[points.length ~/ 2];
 
-  /// SearchScreen currently returns a plain destination name — its dataset is
-  /// a static mock list with no real backend station IDs yet. Until it's
-  /// wired to a live station-search endpoint, we try to resolve a real ID by
-  /// matching the name against provider.nearbyStations; if nothing matches
-  /// (the common case today, since nearby stations are near the USER and
-  /// destinations are elsewhere), we fall back to a slugified name. This is
-  /// a synthetic ID — the provider's mock-fallback logic will kick in if the
-  /// backend can't resolve it, so the UI stays functional either way.
-  String _resolveDestinationId(String name, TransitProvider provider) {
-    for (final station in provider.nearbyStations) {
-      if (station.name.toLowerCase() == name.toLowerCase()) {
-        return station.id;
-      }
-    }
-    return name.toLowerCase().replaceAll(' ', '-');
-  }
+  /// SearchScreen now returns a real backend station ID (UUID). If it ever
+  /// somehow doesn't match a known station, we fall back to a slugified
+  /// version so the request shape stays valid — the provider's mock
+  /// fallback in searchRoutes() covers the rest.
+  String _resolveDestinationId(String result) => result;
 
   // ── Bottom sheet ───────────────────────────────────────────────────────────
 
-  void _showRouteDetails(TransitRoute route) {
+  void _showRouteDetails(TransitRoute route, {required bool isBest}) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -164,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            RouteCard(route: route),
+            RouteCard(route: route, isBest: isBest),
             const SizedBox(height: 8),
           ],
         ),
@@ -181,10 +181,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (result == null || result.isEmpty || !mounted) return;
 
+    // `result` is now a real station ID (UUID) returned by SearchScreen,
+    // not a display name — no more name-matching guesswork needed here.
     setState(() => _toText = result);
 
     final provider = context.read<TransitProvider>();
-    final destinationId = _resolveDestinationId(result, provider);
+    final destinationId = _resolveDestinationId(result);
     final activeNearbyStationIds = provider.nearbyStations
         .map((s) => s.id)
         .toList();
@@ -193,7 +195,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted || provider.routes.isEmpty) return;
 
-    // Recenter on the first returned route's midpoint.
     final firstPath = provider.routes.first.coordinates;
     if (firstPath.isNotEmpty) {
       _mapController.move(_midpoint(firstPath), 12.0);
@@ -207,20 +208,55 @@ class _HomeScreenState extends State<HomeScreen> {
     final provider = context.watch<TransitProvider>();
     final cs = Theme.of(context).colorScheme;
 
-    final List<Polyline> polylines = [];
-    final List<Marker> markers = [];
+    // _toText now holds a station UUID (not a display name), so the search
+    // bar derives a human-readable label from the loaded route data instead
+    // of ever showing the raw ID.
+    final String searchBarLabel = _toText.isEmpty
+        ? 'Where to?'
+        : (provider.routes.isNotEmpty &&
+              provider.routes.first.stationNames.isNotEmpty)
+        ? 'To: ${provider.routes.first.stationNames.last}'
+        : 'Searching route…';
 
+    final List<Marker> markers = [];
+    final List<Polyline> polylines = [];
+
+    // ── 1. Grey station pins for every station near the user ──────────────────
+    if (provider.hasNearbyStations) {
+      for (final station in provider.nearbyStations) {
+        if (station.latitude == 0.0 && station.longitude == 0.0) continue;
+        markers.add(
+          Marker(
+            point: LatLng(station.latitude, station.longitude),
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.directions_bus,
+              color: Colors.grey.shade600,
+              size: 20,
+            ),
+          ),
+        );
+      }
+    }
+
+    // ── 2. Route polylines + per-route station nodes + midpoint badges ────────
     if (_toText.isNotEmpty && provider.routes.isNotEmpty) {
       for (int i = 0; i < 3 && i < provider.routes.length; i++) {
         final route = provider.routes[i];
         final path = route.coordinates;
-        if (path.isEmpty) continue; // defensive: skip a route with no path data
+        final isBest = i == 0; // fastest ETA option, per TransitProvider order
+        if (path.isEmpty) continue;
 
         polylines.add(
-          Polyline(points: path, color: route.routeColor, strokeWidth: 5.0),
+          Polyline(
+            points: path,
+            color: route.routeColor,
+            strokeWidth: isBest ? 7.0 : 5.0,
+          ),
         );
 
-        // Station node markers — small white circles, coloured border.
         for (final point in path) {
           markers.add(
             Marker(
@@ -247,15 +283,18 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
 
-        // Midpoint pill badge.
+        final badgeLabel = isBest
+            ? '⭐ Best • ${route.name} • ${route.etaMinutes}m'
+            : '${route.name} • ${route.etaMinutes}m';
+
         markers.add(
           Marker(
             point: _midpoint(path),
-            width: 220,
+            width: isBest ? 240 : 220,
             height: 40,
             alignment: Alignment.center,
             child: GestureDetector(
-              onTap: () => _showRouteDetails(route),
+              onTap: () => _showRouteDetails(route, isBest: isBest),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -283,7 +322,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(width: 4),
                     Flexible(
                       child: Text(
-                        '${route.name} • ${route.etaMinutes}m',
+                        badgeLabel,
                         style: AppTextStyles.mono(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
@@ -301,7 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // Blue-dot user location marker.
+    // ── 3. Blue-dot user location (drawn last so it's on top) ─────────────────
     if (_currentLocation != null) {
       markers.add(
         Marker(
@@ -377,7 +416,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            _toText.isEmpty ? 'Where to?' : 'To: $_toText',
+                            searchBarLabel,
                             style: Theme.of(context).textTheme.bodyLarge
                                 ?.copyWith(
                                   color: _toText.isEmpty
