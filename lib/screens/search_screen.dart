@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import 'package:mobile_app/models/nearby_station.dart';
+import 'package:mobile_app/providers/transit_provider.dart';
 import 'package:mobile_app/theme/app_theme.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
-
   @override
   State<SearchScreen> createState() => _SearchScreenState();
 }
@@ -13,34 +16,16 @@ class _SearchScreenState extends State<SearchScreen> {
   final FocusNode _focusNode = FocusNode();
   String _searchQuery = '';
 
-  // Mock Database of Addis Ababa Locations for Auto-complete
-  final List<String> _allLocations = [
-    'Ayat Station',
-    'CMC Station',
-    'Megenagna',
-    'Piassa',
-    'Bole Airport',
-    'Stadium',
-    'Mexico Square',
-    'Merkato',
-    'Sarbet',
-    'Kera',
-    '4 Kilo',
-    '6 Kilo',
-    'Shiromeda',
-  ];
+  // NOTE: the hardcoded _allLocations list is gone — autocomplete now reads
+  // live from TransitProvider.allStations (populated by fetchAllStations()
+  // in HomeScreen.initState).
 
   @override
   void initState() {
     super.initState();
-    // Listen to typing to update the auto-complete list
     _destinationController.addListener(() {
-      setState(() {
-        _searchQuery = _destinationController.text;
-      });
+      setState(() => _searchQuery = _destinationController.text);
     });
-
-    // Auto-focus the keyboard as soon as the screen opens
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _focusNode.requestFocus(),
     );
@@ -53,21 +38,24 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
-  void _selectLocation(String location) {
-    // AUTO-SUBMIT: Instantly close the screen and send the location string back!
-    Navigator.pop(context, location);
+  /// Returns the station's real database ID (a UUID), not just its name, so
+  /// HomeScreen can call TransitProvider.searchRoutes with a precise
+  /// destination the backend actually recognizes.
+  void _selectLocation(NearbyStation station) {
+    Navigator.pop(context, station.id);
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final allStations = context.watch<TransitProvider>().allStations;
 
-    // Filter logic: If query is empty, show recent. If typing, show matches.
-    final filteredLocations = _searchQuery.isEmpty
-        ? ['Piassa', 'Bole Airport', 'Mexico Square'] // Recent searches
-        : _allLocations
+    final filteredStations = _searchQuery.isEmpty
+        ? allStations
+        : allStations
               .where(
-                (loc) => loc.toLowerCase().contains(_searchQuery.toLowerCase()),
+                (s) =>
+                    s.name.toLowerCase().contains(_searchQuery.toLowerCase()),
               )
               .toList();
 
@@ -76,7 +64,7 @@ class _SearchScreenState extends State<SearchScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Top Search Header
+            // ── Top search header ────────────────────────────────────────────
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -130,25 +118,37 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
 
-            // Auto-complete List
+            // ── Results list ──────────────────────────────────────────────────
             Expanded(
-              child: ListView.builder(
-                itemCount: filteredLocations.length,
-                itemBuilder: (context, index) {
-                  final location = filteredLocations[index];
-                  return ListTile(
-                    leading: Icon(
-                      _searchQuery.isEmpty
-                          ? Icons.history
-                          : Icons.location_on_outlined,
-                      color: cs.onSurfaceVariant,
+              // allStations.isEmpty doubles as a simple loading proxy — the
+              // cache is populated once on app open and is normally ready by
+              // the time the user reaches this screen.
+              child: allStations.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : filteredStations.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No stations found',
+                        style: TextStyle(color: cs.onSurfaceVariant),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: filteredStations.length,
+                      itemBuilder: (context, index) {
+                        final station = filteredStations[index];
+                        return ListTile(
+                          leading: Icon(
+                            Icons.directions_bus_rounded,
+                            color: cs.onSurfaceVariant,
+                          ),
+                          title: Text(
+                            station.name,
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                          onTap: () => _selectLocation(station),
+                        );
+                      },
                     ),
-                    title: Text(location, style: const TextStyle(fontSize: 16)),
-                    // Tap triggers the auto-submit
-                    onTap: () => _selectLocation(location),
-                  );
-                },
-              ),
             ),
           ],
         ),
