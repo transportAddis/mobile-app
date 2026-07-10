@@ -33,7 +33,7 @@ class TransitApiService {
   /// Returns a raw JSON list of stations within [radius] metres of the
   /// given coordinates.
   ///
-  /// Endpoint: GET /passenger/stations/nearby
+  /// Endpoint: GET /passenger/stations/nearby/
   ///   ?latitude=<lat>&longitude=<lng>&radius=<radius>
   ///
   /// Each list element is a raw [Map<String, dynamic>] from the server.
@@ -44,7 +44,8 @@ class TransitApiService {
     required double lng,
     required double radius,
   }) async {
-    final uri = Uri.parse('$_baseUrl/passenger/stations/nearby').replace(
+    // FIX: Added trailing slash to satisfy Django APPEND_SLASH [12]
+    final uri = Uri.parse('$_baseUrl/passenger/stations/nearby/').replace(
       queryParameters: {
         'latitude': lat.toString(),
         'longitude': lng.toString(),
@@ -59,7 +60,7 @@ class TransitApiService {
   /// Returns a raw JSON list of route options between the user's nearby
   /// stations and a specific destination station.
   ///
-  /// Endpoint: POST /passenger/routes/search
+  /// Endpoint: POST /passenger/routes/search/
   /// Body:
   /// ```json
   /// {
@@ -71,7 +72,8 @@ class TransitApiService {
     required String destinationStationId,
     required List<String> nearbyStationIds,
   }) async {
-    final uri = Uri.parse('$_baseUrl/passenger/routes/search');
+    // FIX: Added trailing slash to satisfy Django APPEND_SLASH [12]
+    final uri = Uri.parse('$_baseUrl/passenger/routes/search/');
 
     final response = await _post(
       uri,

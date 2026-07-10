@@ -1,82 +1,115 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'package:mobile_app/models/transit_route.dart';
+import 'package:mobile_app/providers/transit_provider.dart';
 import 'package:mobile_app/theme/app_theme.dart';
 
-class _SavedRoute {
-  const _SavedRoute({
-    required this.name,
-    required this.from,
-    required this.to,
-    required this.etaMinutes,
-    required this.routeType,
-    required this.routeColor,
-    required this.queueLevel,
-  });
-  final String name, from, to, routeType;
-  final int etaMinutes;
-  final Color routeColor;
-  final CrowdLevel queueLevel;
-}
-
-const List<_SavedRoute> _mockSaved = [
-  _SavedRoute(
-    name: 'Home to University',
-    from: 'Ayat Station',
-    to: 'Addis Ababa University',
-    etaMinutes: 22,
-    routeType: 'Smart Bus',
-    routeColor: Color(0xFFDE613B),
-    queueLevel: CrowdLevel.low,
-  ),
-  _SavedRoute(
-    name: 'Commute to Piassa',
-    from: 'Lebu Station',
-    to: 'Piassa',
-    etaMinutes: 18,
-    routeType: 'City Bus',
-    routeColor: Color(0xFF00695C),
-    queueLevel: CrowdLevel.medium,
-  ),
-  _SavedRoute(
-    name: 'Weekend Market',
-    from: 'Megenagna',
-    to: 'Merkato',
-    etaMinutes: 35,
-    routeType: 'Smart Bus',
-    routeColor: Color(0xFF6A1B9A),
-    queueLevel: CrowdLevel.high,
-  ),
-];
+// ─────────────────────────────────────────────────────────────────────────────
+// SavedRoutesScreen
+//
+// Renders TransitProvider.savedRoutes — no more mock data. A route is added
+// here via the "Save this Route" button in HomeScreen's route-detail bottom
+// sheet, or removed from either that same button or the small remove icon
+// on each card below.
+// ─────────────────────────────────────────────────────────────────────────────
 
 class SavedRoutesScreen extends StatelessWidget {
   const SavedRoutesScreen({super.key});
+
+  void _handleRemove(BuildContext context, TransitRoute route) {
+    context.read<TransitProvider>().toggleSaveRoute(route);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Route removed from your favorites'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final savedRoutes = context.watch<TransitProvider>().savedRoutes;
 
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
-          children: [
-            Text(
-              'Saved Routes',
-              style: theme.textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Saved Routes',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
+              const SizedBox(height: 4),
+              Text(
+                savedRoutes.isEmpty
+                    ? 'Your favorite routes will appear here'
+                    : '${savedRoutes.length} '
+                          '${savedRoutes.length == 1 ? 'route' : 'routes'} saved locally',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              Expanded(
+                child: savedRoutes.isEmpty
+                    ? const _EmptyState()
+                    : ListView.builder(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        itemCount: savedRoutes.length,
+                        itemBuilder: (context, index) => _SavedRouteCard(
+                          route: savedRoutes[index],
+                          onRemove: () =>
+                              _handleRemove(context, savedRoutes[index]),
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _EmptyState
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    // Grey icon/text that still adapts sensibly in dark mode.
+    final mutedColor = cs.onSurfaceVariant.withValues(alpha: 0.45);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.star_outline, size: 64, color: mutedColor),
+            const SizedBox(height: 16),
             Text(
-              '${_mockSaved.length} routes saved locally',
+              'No saved routes yet. Tap the save button on any route '
+              'details card to add it to your list.',
+              textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: cs.onSurfaceVariant,
+                height: 1.5,
               ),
             ),
-            const SizedBox(height: 24),
-            ..._mockSaved.map((r) => _SavedRouteCard(route: r)),
           ],
         ),
       ),
@@ -84,17 +117,26 @@ class SavedRoutesScreen extends StatelessWidget {
   }
 }
 
-class _SavedRouteCard extends StatelessWidget {
-  const _SavedRouteCard({required this.route});
-  final _SavedRoute route;
+// ─────────────────────────────────────────────────────────────────────────────
+// _SavedRouteCard
+//
+// from/to are derived from TransitRoute.stationNames (first/last stop) since
+// the real model doesn't carry separate origin/destination strings.
+// ─────────────────────────────────────────────────────────────────────────────
 
-  Color get _queueColor => switch (route.queueLevel) {
+class _SavedRouteCard extends StatelessWidget {
+  const _SavedRouteCard({required this.route, required this.onRemove});
+
+  final TransitRoute route;
+  final VoidCallback onRemove;
+
+  Color get _queueColor => switch (route.stationQueueLevel) {
     CrowdLevel.low => AppColors.crowdLow,
     CrowdLevel.medium => AppColors.crowdMedium,
     CrowdLevel.high => AppColors.crowdHigh,
   };
 
-  String get _queueLabel => switch (route.queueLevel) {
+  String get _queueLabel => switch (route.stationQueueLevel) {
     CrowdLevel.low => 'Clear',
     CrowdLevel.medium => 'Moderate',
     CrowdLevel.high => 'Crowded',
@@ -104,6 +146,9 @@ class _SavedRouteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+
+    final from = route.stationNames.isNotEmpty ? route.stationNames.first : '—';
+    final to = route.stationNames.length > 1 ? route.stationNames.last : '—';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -118,6 +163,7 @@ class _SavedRouteCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── Top row: colour dot | name | queue badge | remove ──────────
               Row(
                 children: [
                   Container(
@@ -135,6 +181,7 @@ class _SavedRouteCard extends StatelessWidget {
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   Container(
@@ -168,20 +215,32 @@ class _SavedRouteCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: cs.onSurfaceVariant,
+                    ),
+                    onPressed: onRemove,
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Remove from saved',
+                  ),
                 ],
               ),
-              const SizedBox(height: 12),
+
+              const SizedBox(height: 8),
+
+              // ── Middle row: from → to ──────────────────────────────────────
               Row(
                 children: [
-                  // FIX: both icons below are compile-time constants — const added.
-                  const Icon(
+                  Icon(
                     Icons.trip_origin_rounded,
                     size: 10,
                     color: AppColors.crowdLow,
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    route.from,
+                    from,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: cs.onSurfaceVariant,
                     ),
@@ -194,7 +253,7 @@ class _SavedRouteCard extends StatelessWidget {
                       color: cs.onSurfaceVariant,
                     ),
                   ),
-                  const Icon(
+                  Icon(
                     Icons.location_on_rounded,
                     size: 10,
                     color: AppColors.crowdHigh,
@@ -202,7 +261,7 @@ class _SavedRouteCard extends StatelessWidget {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      route.to,
+                      to,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: cs.onSurfaceVariant,
                       ),
@@ -211,19 +270,20 @@ class _SavedRouteCard extends StatelessWidget {
                   ),
                 ],
               ),
+
               const SizedBox(height: 12),
+
+              // ── Bottom row: type | ETA ──────────────────────────────────────
               Row(
                 children: [
                   Icon(
-                    route.routeType == 'City Bus'
-                        ? Icons.directions_bus_rounded
-                        : Icons.airport_shuttle_rounded,
+                    Icons.directions_bus_rounded,
                     size: 16,
                     color: cs.onSurfaceVariant,
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    route.routeType,
+                    route.type,
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: cs.onSurfaceVariant,
                     ),
