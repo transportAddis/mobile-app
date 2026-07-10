@@ -1,0 +1,36 @@
+{
+  "@@locale": "en",
+  "language": "Language",
+  "settings": "Settings",
+  "light": "Light",
+  "auto": "Auto",
+  "dark": "Dark",
+  "pushNotifications": "Push Notifications",
+  "privacyPolicy": "Privacy Policy",
+  "logout": "Logout",
+  "whereTo": "Where to?",
+  "home": "Home",
+  "saved": "Saved",
+  "savedRoutesTitle": "Saved Routes",
+  "savedRoutesSubtitle": "Your favorite routes will appear here",
+  "noSavedRoutes": "No saved routes yet. Tap the save button on any route details card to add it to your list.",
+  "eta": "ETA",
+  "min": "min",
+  "routeSavedLocally": "{count} route(s) saved locally",
+  "@routeSavedLocally": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "clear": "Clear",
+  "moderate": "Moderate",
+  "crowded": "Crowded",
+  "searchingRoute": "Searching route…",
+  "noRouteFound": "No route found — try again",
+  "toDestination": "To: {destination}",
+  "@toDestination": {
+    "placeholders": {
+      "destination": { "type": "String" }
+    }
+  }
+}
