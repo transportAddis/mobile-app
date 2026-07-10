@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:mobile_app/l10n/app_localizations.dart';
 import 'package:mobile_app/models/transit_route.dart';
 import 'package:mobile_app/providers/transit_provider.dart';
 import 'package:mobile_app/theme/app_theme.dart';
@@ -27,11 +28,12 @@ class SavedRoutesScreen extends StatelessWidget {
     );
   }
 
-  @override
+@override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final savedRoutes = context.watch<TransitProvider>().savedRoutes;
+    final l10n = AppLocalizations.of(context)!; // Access translations [12]
 
     return Scaffold(
       body: SafeArea(
@@ -41,7 +43,7 @@ class SavedRoutesScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Saved Routes',
+                l10n.savedRoutesTitle, // Localized [12]
                 style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -49,15 +51,13 @@ class SavedRoutesScreen extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 savedRoutes.isEmpty
-                    ? 'Your favorite routes will appear here'
-                    : '${savedRoutes.length} '
-                          '${savedRoutes.length == 1 ? 'route' : 'routes'} saved locally',
+                    ? l10n.savedRoutesSubtitle // Localized [12]
+                    : l10n.routeSavedLocally(savedRoutes.length), // Localized [12]
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: cs.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 24),
-
               Expanded(
                 child: savedRoutes.isEmpty
                     ? const _EmptyState()
@@ -86,12 +86,12 @@ class SavedRoutesScreen extends StatelessWidget {
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
-  @override
+@override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    // Grey icon/text that still adapts sensibly in dark mode.
     final mutedColor = cs.onSurfaceVariant.withValues(alpha: 0.45);
+    final l10n = AppLocalizations.of(context)!; // Access translations [12]
 
     return Center(
       child: Padding(
@@ -102,8 +102,7 @@ class _EmptyState extends StatelessWidget {
             Icon(Icons.star_outline, size: 64, color: mutedColor),
             const SizedBox(height: 16),
             Text(
-              'No saved routes yet. Tap the save button on any route '
-              'details card to add it to your list.',
+              l10n.noSavedRoutes, // Localized [12]
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: cs.onSurfaceVariant,
@@ -114,8 +113,7 @@ class _EmptyState extends StatelessWidget {
         ),
       ),
     );
-  }
-}
+  }}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // _SavedRouteCard
@@ -136,16 +134,18 @@ class _SavedRouteCard extends StatelessWidget {
     CrowdLevel.high => AppColors.crowdHigh,
   };
 
-  String get _queueLabel => switch (route.stationQueueLevel) {
-    CrowdLevel.low => 'Clear',
-    CrowdLevel.medium => 'Moderate',
-    CrowdLevel.high => 'Crowded',
+  // Localized switch [12]
+  String _queueLabel(AppLocalizations l10n) => switch (route.stationQueueLevel) {
+    CrowdLevel.low => l10n.clear,
+    CrowdLevel.medium => l10n.moderate,
+    CrowdLevel.high => l10n.crowded,
   };
 
-  @override
+@override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final l10n = AppLocalizations.of(context)!; // Access translations [12]
 
     final from = route.stationNames.isNotEmpty ? route.stationNames.first : '—';
     final to = route.stationNames.length > 1 ? route.stationNames.last : '—';
@@ -206,8 +206,8 @@ class _SavedRouteCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 5),
                         Text(
-                          _queueLabel,
-                          style: theme.textTheme.labelSmall?.copyWith(
+                        _queueLabel(l10n),
+                        style: theme.textTheme.labelSmall?.copyWith(
                             color: _queueColor,
                             fontWeight: FontWeight.w600,
                           ),
@@ -233,7 +233,7 @@ class _SavedRouteCard extends StatelessWidget {
               // ── Middle row: from → to ──────────────────────────────────────
               Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.trip_origin_rounded,
                     size: 10,
                     color: AppColors.crowdLow,
@@ -253,7 +253,7 @@ class _SavedRouteCard extends StatelessWidget {
                       color: cs.onSurfaceVariant,
                     ),
                   ),
-                  Icon(
+                  const Icon(
                     Icons.location_on_rounded,
                     size: 10,
                     color: AppColors.crowdHigh,
@@ -290,13 +290,13 @@ class _SavedRouteCard extends StatelessWidget {
                   ),
                   const Spacer(),
                   Text(
-                    'ETA ',
+                    '${l10n.eta} ', // Localized [12]                    style: theme.textTheme.bodySmall?.copyWith(
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: cs.onSurfaceVariant,
                     ),
                   ),
                   Text(
-                    '${route.etaMinutes} min',
+                    '${route.etaMinutes} ${l10n.min}',
                     style: AppTextStyles.mono(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,

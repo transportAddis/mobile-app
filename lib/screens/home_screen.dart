@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
+import 'package:mobile_app/l10n/app_localizations.dart';
 import 'package:mobile_app/models/transit_route.dart';
 import 'package:mobile_app/providers/transit_provider.dart';
 import 'package:mobile_app/screens/search_screen.dart';
@@ -248,14 +249,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final provider = context.watch<TransitProvider>();
     final cs        = Theme.of(context).colorScheme;
+    final l10n      = AppLocalizations.of(context)!;
 
     final String searchBarLabel = _toText.isEmpty
-        ? 'Where to?'
+        ? l10n.whereTo
         : provider.hasError
-            ? 'No route found — try again'
+            ? l10n.noRouteFound
             : (provider.routes.isNotEmpty && provider.routes.first.stationNames.isNotEmpty)
-                ? 'To: ${provider.routes.first.stationNames.last}'
-                : 'Searching route…';
+                ? l10n.toDestination(provider.routes.first.stationNames.last)
+                : l10n.searchingRoute;
 
     final List<Marker>   markers   = [];
     final List<Polyline> polylines = [];
@@ -381,7 +383,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           FlutterMap(
             mapController: _mapController,
-            options: MapOptions(
+            options: const MapOptions(
               initialCenter: _kMeskelSquare,
               initialZoom: 13.5,
             ),

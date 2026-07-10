@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:mobile_app/l10n/app_localizations.dart';
 
 import 'package:mobile_app/providers/theme_provider.dart';
 import 'package:mobile_app/screens/login_screen.dart';
@@ -12,12 +13,57 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _pushNotifications = true;
-
-  void _onLogout() {
+  void _onLogout(AppLocalizations l10n) {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
       (_) => false,
+    );
+  }
+
+  // Shows an elegant dialog to toggle languages on tap [11, 12]
+  void _showLanguageDialog(BuildContext context, ThemeProvider provider) {
+    final l10n = AppLocalizations.of(context)!;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          l10n.language,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('English'),
+              // FIX: Replaced deprecated Radio with an elegant checkmark
+              trailing: provider.locale.languageCode == 'en'
+                  ? const Icon(
+                      Icons.check_circle_rounded,
+                      color: AppColors.primary,
+                    )
+                  : null,
+              onTap: () {
+                provider.setLocale(const Locale('en'));
+                Navigator.pop(ctx);
+              },
+            ),
+            ListTile(
+              title: const Text('አማርኛ (Amharic)'),
+              trailing: provider.locale.languageCode == 'am'
+                  ? const Icon(
+                      Icons.check_circle_rounded,
+                      color: AppColors.primary,
+                    )
+                  : null,
+              onTap: () {
+                provider.setLocale(const Locale('am'));
+                Navigator.pop(ctx);
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -26,8 +72,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final themeProvider = context.watch<ThemeProvider>();
+    final l10n = AppLocalizations.of(
+      context,
+    )!; // Access Amharic/English translations [12]
 
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 28, 20, 32),
@@ -92,24 +142,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 child: Column(
                   children: [
-                    // Language
+                    // Language selection row
                     ListTile(
                       leading: const Icon(Icons.language_rounded),
-                      title: const Text('Language'),
-                      subtitle: const Text('English'),
+                      title: Text(l10n.language),
+                      subtitle: Text(
+                        themeProvider.locale.languageCode == 'am'
+                            ? 'አማርኛ'
+                            : 'English',
+                      ),
                       trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () {},
+                      onTap: () => _showLanguageDialog(context, themeProvider),
                     ),
                     Divider(
                       height: 1,
                       color: cs.outline.withValues(alpha: 0.25),
                     ),
 
-                    // ── Theme selector ────────────────────────────────────────
-                    // FIX: SegmentedButton lives below the title in a Padding
-                    // block so it can expand to the full card width.
-                    // Icons removed from ButtonSegments — text-only gives each
-                    // segment room to breathe without wrapping.
+                    // Theme selector row [11]
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                       child: Row(
@@ -127,9 +177,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Theme', style: theme.textTheme.bodyLarge),
+                                Text(
+                                  l10n.settings,
+                                  style: theme.textTheme.bodyLarge,
+                                ),
                                 const SizedBox(height: 10),
-                                // Full-width SegmentedButton, text labels only
                                 SegmentedButton<ThemeMode>(
                                   expandedInsets: EdgeInsets.zero,
                                   style: SegmentedButton.styleFrom(
@@ -144,18 +196,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       vertical: 10,
                                     ),
                                   ),
-                                  segments: const [
+                                  segments: [
                                     ButtonSegment(
                                       value: ThemeMode.light,
-                                      label: Text('Light'),
+                                      label: Text(l10n.light),
                                     ),
                                     ButtonSegment(
                                       value: ThemeMode.system,
-                                      label: Text('Auto'),
+                                      label: Text(l10n.auto),
                                     ),
                                     ButtonSegment(
                                       value: ThemeMode.dark,
-                                      label: Text('Dark'),
+                                      label: Text(l10n.dark),
                                     ),
                                   ],
                                   selected: {themeProvider.themeMode},
@@ -175,24 +227,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: cs.outline.withValues(alpha: 0.25),
                     ),
 
-                    // Push Notifications
-                    SwitchListTile(
-                      secondary: const Icon(Icons.notifications_rounded),
-                      title: const Text('Push Notifications'),
-                      value: _pushNotifications,
-                      activeThumbColor: AppColors.primary,
-                      onChanged: (val) =>
-                          setState(() => _pushNotifications = val),
-                    ),
-                    Divider(
-                      height: 1,
-                      color: cs.outline.withValues(alpha: 0.25),
-                    ),
-
                     // Privacy Policy
                     ListTile(
                       leading: const Icon(Icons.privacy_tip_outlined),
-                      title: const Text('Privacy Policy'),
+                      title: Text(l10n.privacyPolicy),
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () {},
                     ),
@@ -203,7 +241,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               // ── Logout ────────────────────────────────────────────────────
               OutlinedButton(
-                onPressed: _onLogout,
+                onPressed: () => _onLogout(l10n),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.error,
                   side: const BorderSide(color: AppColors.error),
@@ -212,7 +250,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.all(Radius.circular(12)),
                   ),
                 ),
-                child: const Text('Logout'),
+                child: Text(l10n.logout),
               ),
             ],
           ),

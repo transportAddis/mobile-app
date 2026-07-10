@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:io';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:mobile_app/l10n/app_localizations.dart';
 
 import 'package:mobile_app/providers/theme_provider.dart';
 import 'package:mobile_app/providers/transit_provider.dart';
@@ -39,6 +41,20 @@ class SmartTransitApp extends StatelessWidget {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           themeMode: themeProvider.themeMode,
+          locale: themeProvider.locale, // Binds language state dynamically [11]
+
+        // Localization configurations
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('en'),
+            Locale('am'),
+          ],
+
           home: const LoginScreen(),
         ),
       ),

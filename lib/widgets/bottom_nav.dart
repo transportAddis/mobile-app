@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:mobile_app/l10n/app_localizations.dart';
 import 'package:mobile_app/theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,46 +34,44 @@ class TransitBottomNav extends StatelessWidget {
 
   // ── Nav item definitions ──────────────────────────────────────────────────
 
-  static const List<_NavItemData> _items = [
-    _NavItemData(
-      label: 'Home',
-      activeIcon: Icons.home_rounded,
-      inactiveIcon: Icons.home_outlined,
-    ),
-    _NavItemData(
-      label: 'Saved',
-      activeIcon: Icons.bookmark_rounded,
-      inactiveIcon: Icons.bookmark_border,
-    ),
-    _NavItemData(
-      label: 'Settings',
-      activeIcon: Icons.settings_rounded,
-      inactiveIcon: Icons.settings_outlined,
-    ),
-  ];
-
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = isDark ? AppColors.borderDark : AppColors.borderLight;
+    final l10n = AppLocalizations.of(context)!; // Access translations [12]
+
+    // Generate translations on the fly
+    final items = [
+      (
+        label: l10n.home,
+        activeIcon: Icons.home_rounded,
+        inactiveIcon: Icons.home_outlined,
+      ),
+      (
+        label: l10n.saved,
+        activeIcon: Icons.bookmark_rounded,
+        inactiveIcon: Icons.bookmark_border,
+      ),
+      (
+        label: l10n.settings,
+        activeIcon: Icons.settings_rounded,
+        inactiveIcon: Icons.settings_outlined,
+      ),
+    ];
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Top border line (replaces Material elevation shadow)
         Container(height: 1, color: borderColor),
         BottomNavigationBar(
           currentIndex: currentIndex,
           onTap: onTap,
-          // Active / inactive colours come from AppTheme.bottomNavigationBarTheme
-          // (primary + unselected). Redeclare here so the widget is
-          // self-contained if extracted to another project.
           selectedItemColor: AppColors.primary,
           unselectedItemColor: AppColors.unselected,
-          items: List.generate(_items.length, (i) {
-            final item = _items[i];
+          items: List.generate(items.length, (i) {
+            final item = items[i];
             final isActive = i == currentIndex;
             return BottomNavigationBarItem(
               icon: Icon(isActive ? item.activeIcon : item.inactiveIcon),
@@ -86,17 +85,3 @@ class TransitBottomNav extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// _NavItemData  (private data class; avoids parallel lists)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _NavItemData {
-  const _NavItemData({
-    required this.label,
-    required this.activeIcon,
-    required this.inactiveIcon,
-  });
-
-  final String label;
-  final IconData activeIcon;
-  final IconData inactiveIcon;
-}
